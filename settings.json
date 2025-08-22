@@ -1,0 +1,12 @@
+{
+  "email": "",
+  "default_discount": 100,
+  "default_min_margin": 500,
+  "work_delay": 3,
+  "retry_count": 3,
+  "enable_sound": true,
+  "enable_popup": true,
+  "auto_backup": true,
+  "headless_mode": false,
+  "log_level": "INFO"
+}
