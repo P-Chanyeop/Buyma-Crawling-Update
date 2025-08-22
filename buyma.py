@@ -276,8 +276,17 @@ class Main(QMainWindow):
     crawling_result_signal = pyqtSignal(dict)  # 크롤링 결과
     crawling_finished_signal = pyqtSignal()    # 완료
     
+    # 로그인 관련 시그널
+    login_success_signal = pyqtSignal()        # 로그인 성공
+    login_failed_signal = pyqtSignal(str)      # 로그인 실패
+    
     def __init__(self):
         super().__init__()
+        
+        # 공용 브라우저 드라이버
+        self.shared_driver = None
+        self.is_logged_in = False
+        self.login_thread = None
         
         # 주력 상품 데이터 초기화
         self.favorite_products = []
@@ -295,6 +304,10 @@ class Main(QMainWindow):
         self.crawling_status_signal.connect(self.update_crawling_status)
         self.crawling_result_signal.connect(self.add_crawling_result_safe)
         self.crawling_finished_signal.connect(self.crawling_finished_safe)
+        
+        # 로그인 시그널 연결
+        self.login_success_signal.connect(self.on_login_success)
+        self.login_failed_signal.connect(self.on_login_failed)
         
         # 모든 UI 초기화 완료 후 주력 상품 자동 로드
         self.load_favorite_products_on_startup()
@@ -1950,10 +1963,43 @@ class Main(QMainWindow):
         self.password_input.setMinimumHeight(35)
         account_layout.addWidget(self.password_input, 1, 1)
         
-        test_login_btn = QPushButton("🔐 로그인 테스트")
-        test_login_btn.setMinimumHeight(35)
-        test_login_btn.clicked.connect(self.test_login)
-        account_layout.addWidget(test_login_btn, 1, 2)
+        # 로그인 버튼
+        self.login_btn = QPushButton("🔐 BUYMA 로그인")
+        self.login_btn.setMinimumHeight(35)
+        self.login_btn.setStyleSheet("""
+            QPushButton {
+                background: #007bff;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                font-size: 14px;
+                font-weight: bold;
+                font-family: '맑은 고딕';
+            }
+            QPushButton:hover {
+                background: #0056b3;
+            }
+            QPushButton:disabled {
+                background: #6c757d;
+                color: #ffffff;
+            }
+        """)
+        self.login_btn.clicked.connect(self.start_buyma_login)
+        account_layout.addWidget(self.login_btn, 1, 2)
+        
+        # 로그인 상태 표시
+        self.login_status_label = QLabel("❌ 로그인 필요")
+        self.login_status_label.setStyleSheet("""
+            QLabel {
+                color: #dc3545;
+                font-weight: bold;
+                font-family: '맑은 고딕';
+                padding: 5px;
+                border-radius: 3px;
+                background: #f8f9fa;
+            }
+        """)
+        account_layout.addWidget(self.login_status_label, 2, 0, 1, 3)
         
         layout.addWidget(account_group)
         
@@ -3049,6 +3095,10 @@ class Main(QMainWindow):
     
     def start_crawling(self):
         """크롤링 시작"""
+        # 로그인 체크
+        if not self.check_login_required():
+            return
+            
         url = self.url_input.text().strip()
         count = self.crawl_count.value()
         
@@ -3084,11 +3134,310 @@ class Main(QMainWindow):
         }
         
         self.crawling_thread = threading.Thread(
-            target=self.run_crawling, 
+            target=self.run_crawling_with_shared_driver, 
             args=(url, count, crawling_settings), 
             daemon=True
         )
         self.crawling_thread.start()
+    
+    def run_crawling_with_shared_driver(self, url, count, settings):
+        """공용 드라이버를 사용한 크롤링 실행"""
+        crawled_products = []  # 중복 체크용
+        collected_items = 0
+        
+        try:
+            # 공용 드라이버 상태 체크
+            if not self.shared_driver or not self.is_logged_in:
+                self.crawling_status_signal.emit("로그인이 필요합니다")
+                self.crawling_finished_signal.emit()
+                return
+            
+            self.log_message("🌐 로그인된 브라우저를 사용합니다...")
+            self.log_message(f"⚙️ 설정: 이미지포함={settings['include_images']}, "
+                           f"옵션포함={settings['include_options']}, "
+                           f"중복제외={settings['skip_duplicates']}")
+            
+            # 크롤링 페이지로 이동
+            self.log_message(f"📄 페이지에 접속합니다: {url}")
+            self.shared_driver.get(url)
+            
+            # 페이지 로딩 대기
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.webdriver.common.by import By
+            import time
+            
+            WebDriverWait(self.shared_driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
+            self.log_message("🔍 상품 정보를 수집합니다...")
+            
+            # 상품 요소 찾기 (여러 선택자 시도)
+            product_selectors = [
+                ".item", ".product", ".goods", "[class*='item']", 
+                "[class*='product']", "[class*='goods']", "li", "div.list-item"
+            ]
+            
+            product_elements = []
+            for selector in product_selectors:
+                try:
+                    elements = self.shared_driver.find_elements(By.CSS_SELECTOR, selector)
+                    if len(elements) >= 3:  # 최소 3개 이상의 요소가 있어야 상품 목록으로 간주
+                        product_elements = elements[:count*2]  # 여유분 포함
+                        self.log_message(f"✅ 상품 요소 발견: {selector} ({len(elements)}개)")
+                        break
+                except:
+                    continue
+            
+            if not product_elements:
+                self.log_message("❌ 상품 요소를 찾을 수 없습니다. 페이지 구조를 확인해주세요.")
+                self.crawling_finished_signal.emit()
+                return
+            
+            # 상품 링크 추출
+            product_links = []
+            for element in product_elements:
+                try:
+                    link = element.find_element(By.TAG_NAME, "a").get_attribute("href")
+                    if link and link.startswith('http'):
+                        product_links.append(link)
+                        if len(product_links) >= count * 2:  # 충분한 링크 확보
+                            break
+                except:
+                    continue
+            
+            self.log_message(f"🔗 상품 링크 {len(product_links)}개 추출 완료")
+            
+            # 상품 정보 추출
+            for i, link in enumerate(product_links):
+                if collected_items >= count:
+                    break
+                
+                # 브라우저 상태 체크
+                try:
+                    self.shared_driver.current_url  # 브라우저가 살아있는지 체크
+                except Exception as e:
+                    self.log_message(f"❌ 브라우저 연결 끊어짐: {str(e)}")
+                    break
+                
+                try:
+                    # 중복 상품 체크
+                    if settings['skip_duplicates']:
+                        if self.is_duplicate_product(link, crawled_products):
+                            self.log_message(f"⏭️ 중복 상품 건너뛰기: {link}")
+                            continue
+                    
+                    # 상품 정보 추출 (공용 드라이버 사용)
+                    item_data = self.extract_item_data_with_shared_driver(link, i, settings)
+                    
+                    if item_data:
+                        # 중복 체크용 리스트에 추가
+                        if settings['skip_duplicates']:
+                            crawled_products.append({
+                                'url': link,
+                                'title': item_data.get('title', ''),
+                                'brand': item_data.get('brand', '')
+                            })
+                        
+                        collected_items += 1
+                        
+                        # UI 업데이트 (시그널로 안전하게 처리)
+                        self.crawling_result_signal.emit(item_data)
+                        
+                        # 진행률 업데이트
+                        progress = int((collected_items / count) * 100)
+                        self.crawling_progress_signal.emit(progress)
+                        self.crawling_status_signal.emit(f"진행중: {collected_items}/{count}")
+                        
+                        self.log_message(f"✅ 상품 수집: {item_data.get('title', 'Unknown')[:30]}...")
+                        
+                        # 설정된 딜레이 적용
+                        time.sleep(settings['delay'])
+                
+                except Exception as e:
+                    self.log_message(f"⚠️ 상품 추출 오류 (#{i+1}): {str(e)}")
+                    
+                    # 심각한 오류인지 체크
+                    if "QUOTA_EXCEEDED" in str(e) or "chrome not reachable" in str(e).lower():
+                        self.log_message(f"❌ 심각한 오류 감지, 크롤링 중단: {str(e)}")
+                        break
+                    
+                    continue
+            
+            # 크롤링 완료
+            self.log_message(f"🎉 크롤링 완료! 총 {collected_items}개 상품 수집")
+            self.crawling_status_signal.emit(f"완료: {collected_items}개 수집")
+            self.crawling_progress_signal.emit(100)
+            
+        except Exception as e:
+            self.log_message(f"❌ 크롤링 오류: {str(e)}")
+            self.crawling_status_signal.emit("오류 발생")
+        finally:
+            # 공용 드라이버는 종료하지 않음 (로그인 상태 유지)
+            self.log_message("🔄 크롤링 완료. 브라우저는 로그인 상태로 유지됩니다.")
+            
+            # UI 상태 복원
+            self.crawling_finished_signal.emit()
+    
+    def extract_item_data_with_shared_driver(self, url, index, settings):
+        """공용 드라이버를 사용한 상품 데이터 추출"""
+        try:
+            self.log_message(f"🔗 상품 #{index+1} 페이지 접속 중...")
+            
+            if not url:
+                self.log_message(f"⚠️ 상품 #{index+1} URL을 찾을 수 없습니다.")
+                return None
+            
+            # 공용 드라이버 사용
+            self.shared_driver.get(url)
+            time.sleep(2)
+            
+            # 기본 정보 추출 (기존 로직과 동일)
+            title = "상품명 없음"
+            brand = "브랜드 없음"
+            price = "가격 정보 없음"
+            product_url = url
+            images = []
+            colors = []
+            sizes = []
+            description_text = ""
+            category_text = ""
+            
+            # 상품명 추출
+            try:
+                title_element = self.shared_driver.find_element(By.CSS_SELECTOR, "span.itemdetail-item-name")
+                title = title_element.text.strip() if title_element else f"상품 #{index+1}"
+            except Exception as e:
+                self.log_message(f"⚠️ 상품명 추출 실패: {str(e)}")
+                title = f"상품 #{index+1}"
+            
+            # 브랜드명 추출
+            try:
+                brand_element = self.shared_driver.find_element(By.CSS_SELECTOR, "div.brand-wrap")
+                brand = brand_element.text.replace("i", "").strip() if brand_element else "Unknown Brand"
+            except Exception as e:
+                self.log_message(f"⚠️ 브랜드 추출 실패: {str(e)}")
+                brand = "Unknown Brand"
+            
+            # 가격 추출
+            try:
+                price_element = self.shared_driver.find_element(By.CSS_SELECTOR, "span.price_txt")
+                price = price_element.text.strip() if price_element else "가격 정보 없음"
+            except Exception as e:
+                self.log_message(f"⚠️ 가격 추출 실패: {str(e)}")
+                price = "가격 정보 없음"
+            
+            # 이미지 추출 (설정 확인)
+            if settings['include_images']:
+                try:
+                    ul = self.shared_driver.find_element(By.CSS_SELECTOR, "ul.item_sumb_img")
+                    li_elements = ul.find_elements(By.TAG_NAME, "li")
+                    
+                    for li in li_elements:
+                        try:
+                            a = li.find_element(By.TAG_NAME, "a")
+                            src = a.get_attribute("href")
+                            if src and src.startswith('http'):
+                                images.append(src)
+                        except:
+                            continue
+                            
+                except Exception as e:
+                    self.log_message(f"⚠️ 이미지 추출 실패: {str(e)}")
+                    images = []
+            else:
+                self.log_message(f"⚙️ 이미지 수집 건너뛰기 (설정)")
+            
+            # 색상 및 사이즈 정보 추출 (설정 확인)
+            if settings['include_options']:
+                try:
+                    color_size_buttons = self.shared_driver.find_elements(By.CSS_SELECTOR, "p.colorsize_selector")
+                    
+                    if len(color_size_buttons) >= 1:
+                        # 색상 정보 추출
+                        try:
+                            color_size_buttons[0].click()
+                            time.sleep(1)
+                            
+                            colors_ul = self.shared_driver.find_element(By.CSS_SELECTOR, "ul.colorsize_list")
+                            colors_li_elements = colors_ul.find_elements(By.TAG_NAME, "li")
+                            
+                            for li in colors_li_elements:
+                                try:
+                                    color_text = li.text.strip()
+                                    if color_text and color_text not in colors:
+                                        colors.append(color_text)
+                                except:
+                                    continue
+                            
+                            color_size_buttons[0].click()
+                            time.sleep(1)
+                            
+                        except Exception as e:
+                            self.log_message(f"⚠️ 색상 정보 추출 실패: {str(e)}")
+                    
+                    # 사이즈 정보 추출
+                    if len(color_size_buttons) >= 2:
+                        try:
+                            color_size_buttons[1].click()
+                            time.sleep(1)
+                            
+                            sizes_ul = self.shared_driver.find_element(By.CSS_SELECTOR, ".colorsize_list.js-size-list")
+                            sizes_li_elements = sizes_ul.find_elements(By.TAG_NAME, "li")
+                            
+                            for li in sizes_li_elements:
+                                try:
+                                    size_text = li.text.strip()
+                                    if size_text and size_text not in sizes:
+                                        sizes.append(size_text)
+                                except:
+                                    continue
+                            
+                            color_size_buttons[1].click()
+                            time.sleep(1)
+                            
+                        except Exception as e:
+                            self.log_message(f"⚠️ 사이즈 정보 추출 실패: {str(e)}")
+                        
+                except Exception as e:
+                    self.log_message(f"⚠️ 색상/사이즈 버튼을 찾을 수 없습니다: {str(e)}")
+            else:
+                self.log_message(f"⚙️ 색상/사이즈 수집 건너뛰기 (설정)")
+            
+            # 결과 반환
+            result = {
+                'title': title.strip(),
+                'brand': brand.strip(),
+                'price': price.strip(),
+                'url': product_url.strip(),
+                'images': images,
+                'colors': colors,
+                'sizes': sizes,
+                'description': description_text.strip(),
+                'category': category_text.strip(),
+                'status': '수집 완료'
+            }
+            
+            self.log_message(f"✅ 상품 #{index+1} 데이터 추출 완료: {title[:30]}...")
+            self.log_message(f"   📊 이미지: {len(images)}장, 색상: {len(colors)}개, 사이즈: {len(sizes)}개")
+            
+            return result
+            
+        except Exception as e:
+            self.log_message(f"❌ 상품 #{index+1} 데이터 추출 오류: {str(e)}")
+            return {
+                'title': f"상품 #{index+1}",
+                'brand': "Unknown",
+                'price': "가격 정보 없음",
+                'url': url,
+                'images': [],
+                'colors': [],
+                'sizes': [],
+                'description': "",
+                'category': "",
+                'status': '추출 실패'
+            }
     
     def run_crawling(self, url, count, settings):
         """크롤링 실행 (별도 스레드) - 설정 적용"""
@@ -3553,6 +3902,480 @@ class Main(QMainWindow):
         options.add_argument('--disable-features=VizDisplayCompositor')
         
         return options
+    
+    def start_buyma_login(self):
+        """BUYMA 로그인 시작"""
+        try:
+            email = self.email_input.text().strip()
+            password = self.password_input.text().strip()
+            
+            if not email or not password:
+                QMessageBox.warning(self, "입력 오류", "이메일과 비밀번호를 모두 입력해주세요.")
+                return
+            
+            # 로그인 버튼 비활성화
+            self.login_btn.setEnabled(False)
+            self.login_btn.setText("🔄 로그인 중...")
+            self.login_status_label.setText("🔄 로그인 진행 중...")
+            self.login_status_label.setStyleSheet("""
+                QLabel {
+                    color: #ffc107;
+                    font-weight: bold;
+                    font-family: '맑은 고딕';
+                    padding: 5px;
+                    border-radius: 3px;
+                    background: #f8f9fa;
+                }
+            """)
+            
+            # 별도 스레드에서 로그인 실행
+            self.login_thread = threading.Thread(
+                target=self.perform_buyma_login, 
+                args=(email, password), 
+                daemon=True
+            )
+            self.login_thread.start()
+            
+        except Exception as e:
+            self.log_message(f"로그인 시작 오류: {str(e)}")
+            self.reset_login_ui()
+    
+    def perform_buyma_login(self, email, password):
+        """BUYMA 로그인 수행 (별도 스레드)"""
+        try:
+            self.log_message("🔐 BUYMA 로그인을 시작합니다...")
+            
+            # 기존 드라이버가 있으면 종료
+            if self.shared_driver:
+                try:
+                    self.shared_driver.quit()
+                except:
+                    pass
+                self.shared_driver = None
+            
+            # 새 브라우저 생성
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            import time
+            
+            # Chrome 옵션 설정
+            chrome_options = self.get_stable_chrome_options()
+            
+            # 브라우저 생성 (재시도 로직 포함)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self.shared_driver = webdriver.Chrome(options=chrome_options)
+                    self.shared_driver.implicitly_wait(10)
+                    self.log_message(f"✅ 브라우저 초기화 성공 (시도 {attempt + 1}/{max_retries})")
+                    break
+                except Exception as e:
+                    self.log_message(f"⚠️ 브라우저 초기화 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
+                    if attempt == max_retries - 1:
+                        self.login_failed_signal.emit("브라우저 초기화 실패")
+                        return
+                    time.sleep(2)
+            
+            # BUYMA 로그인 페이지 접속
+            self.log_message("📄 BUYMA 로그인 페이지에 접속합니다...")
+            self.shared_driver.get("https://www.buyma.com/login/")
+            
+            # 페이지 로딩 대기
+            WebDriverWait(self.shared_driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
+            # 로그인 폼 찾기 및 입력
+            self.log_message("📝 로그인 정보를 입력합니다...")
+            
+            # 이메일 입력 (여러 선택자 시도)
+            email_selectors = ["input[name='email']", "input[type='email']", "#email", ".email"]
+            email_field = None
+            for selector in email_selectors:
+                try:
+                    email_field = WebDriverWait(self.shared_driver, 5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+                    break
+                except:
+                    continue
+            
+            if not email_field:
+                self.login_failed_signal.emit("이메일 입력 필드를 찾을 수 없습니다.")
+                return
+            
+            email_field.clear()
+            email_field.send_keys(email)
+            
+            # 비밀번호 입력
+            password_selectors = ["input[name='password']", "input[type='password']", "#password", ".password"]
+            password_field = None
+            for selector in password_selectors:
+                try:
+                    password_field = self.shared_driver.find_element(By.CSS_SELECTOR, selector)
+                    break
+                except:
+                    continue
+            
+            if not password_field:
+                self.login_failed_signal.emit("비밀번호 입력 필드를 찾을 수 없습니다.")
+                return
+            
+            password_field.clear()
+            password_field.send_keys(password)
+            
+            # 로그인 버튼 클릭
+            login_selectors = [
+                "input[type='submit']", 
+                "button[type='submit']", 
+                ".login-btn", 
+                ".btn-login",
+                "button:contains('로그인')"
+            ]
+            login_button = None
+            for selector in login_selectors:
+                try:
+                    login_button = self.shared_driver.find_element(By.CSS_SELECTOR, selector)
+                    break
+                except:
+                    continue
+            
+            if not login_button:
+                self.login_failed_signal.emit("로그인 버튼을 찾을 수 없습니다.")
+                return
+            
+            login_button.click()
+            
+            # 로그인 결과 확인 (최대 15초 대기)
+            self.log_message("⏳ 로그인 결과를 확인합니다...")
+            time.sleep(5)
+            
+            # 로그인 성공 여부 확인
+            current_url = self.shared_driver.current_url
+            page_source = self.shared_driver.page_source.lower()
+            
+            # 성공 조건: 로그인 페이지가 아니거나, 마이페이지로 이동했거나, 로그아웃 버튼이 있음
+            if ("login" not in current_url.lower() or 
+                "mypage" in current_url.lower() or 
+                "logout" in page_source or
+                "마이페이지" in page_source):
+                # 로그인 성공
+                self.is_logged_in = True
+                self.login_success_signal.emit()
+                self.log_message("✅ BUYMA 로그인 성공!")
+            else:
+                # 로그인 실패
+                self.login_failed_signal.emit("로그인 실패: 이메일 또는 비밀번호를 확인해주세요.")
+                
+        except Exception as e:
+            self.log_message(f"❌ 로그인 오류: {str(e)}")
+            self.login_failed_signal.emit(f"로그인 오류: {str(e)}")
+    
+    def on_login_success(self):
+        """로그인 성공 시 UI 업데이트"""
+        self.login_status_label.setText("✅ 로그인 성공")
+        self.login_status_label.setStyleSheet("""
+            QLabel {
+                color: #28a745;
+                font-weight: bold;
+                font-family: '맑은 고딕';
+                padding: 5px;
+                border-radius: 3px;
+                background: #f8f9fa;
+            }
+        """)
+        self.login_btn.setText("🔓 로그아웃")
+        self.login_btn.setEnabled(True)
+        self.login_btn.clicked.disconnect()
+        self.login_btn.clicked.connect(self.logout_buyma)
+        
+        self.log_message("🎉 BUYMA 로그인이 완료되었습니다. 이제 모든 기능을 사용할 수 있습니다.")
+    
+    def on_login_failed(self, error_message):
+        """로그인 실패 시 UI 업데이트"""
+        self.login_status_label.setText(f"❌ {error_message}")
+        self.login_status_label.setStyleSheet("""
+            QLabel {
+                color: #dc3545;
+                font-weight: bold;
+                font-family: '맑은 고딕';
+                padding: 5px;
+                border-radius: 3px;
+                background: #f8f9fa;
+            }
+        """)
+        self.reset_login_ui()
+        
+        # 브라우저 정리
+        if self.shared_driver:
+            try:
+                self.shared_driver.quit()
+            except:
+                pass
+            self.shared_driver = None
+        
+        self.is_logged_in = False
+    
+    def reset_login_ui(self):
+        """로그인 UI 초기화"""
+        self.login_btn.setText("🔐 BUYMA 로그인")
+        self.login_btn.setEnabled(True)
+        try:
+            self.login_btn.clicked.disconnect()
+        except:
+            pass
+        self.login_btn.clicked.connect(self.start_buyma_login)
+    
+    def logout_buyma(self):
+        """BUYMA 로그아웃"""
+        try:
+            if self.shared_driver:
+                self.shared_driver.quit()
+                self.shared_driver = None
+            
+            self.is_logged_in = False
+            self.login_status_label.setText("❌ 로그인 필요")
+            self.login_status_label.setStyleSheet("""
+                QLabel {
+                    color: #dc3545;
+                    font-weight: bold;
+                    font-family: '맑은 고딕';
+                    padding: 5px;
+                    border-radius: 3px;
+                    background: #f8f9fa;
+                }
+            """)
+            self.reset_login_ui()
+            self.log_message("🔓 BUYMA에서 로그아웃되었습니다.")
+            
+        except Exception as e:
+            self.log_message(f"로그아웃 오류: {str(e)}")
+    
+    def check_login_required(self):
+        """로그인 필요 여부 체크"""
+        if not self.is_logged_in or not self.shared_driver:
+            QMessageBox.warning(
+                self, 
+                "로그인 필요", 
+                "이 기능을 사용하려면 먼저 BUYMA에 로그인해주세요.\n\n설정 탭에서 로그인을 진행해주세요."
+            )
+            return False
+        return True
+    
+    def start_buyma_login(self):
+        """BUYMA 로그인 시작"""
+        try:
+            email = self.email_input.text().strip()
+            password = self.password_input.text().strip()
+            
+            if not email or not password:
+                QMessageBox.warning(self, "입력 오류", "이메일과 비밀번호를 모두 입력해주세요.")
+                return
+            
+            # 로그인 버튼 비활성화
+            self.login_btn.setEnabled(False)
+            self.login_btn.setText("🔄 로그인 중...")
+            self.login_status_label.setText("🔄 로그인 진행 중...")
+            self.login_status_label.setStyleSheet("""
+                QLabel {
+                    color: #ffc107;
+                    font-weight: bold;
+                    font-family: '맑은 고딕';
+                    padding: 5px;
+                    border-radius: 3px;
+                    background: #f8f9fa;
+                }
+            """)
+            
+            # 별도 스레드에서 로그인 실행
+            self.login_thread = threading.Thread(
+                target=self.perform_buyma_login, 
+                args=(email, password), 
+                daemon=True
+            )
+            self.login_thread.start()
+            
+        except Exception as e:
+            self.log_message(f"로그인 시작 오류: {str(e)}")
+            self.reset_login_ui()
+    
+    def perform_buyma_login(self, email, password):
+        """BUYMA 로그인 수행 (별도 스레드)"""
+        try:
+            self.log_message("🔐 BUYMA 로그인을 시작합니다...")
+            
+            # 기존 드라이버가 있으면 종료
+            if self.shared_driver:
+                try:
+                    self.shared_driver.quit()
+                except:
+                    pass
+                self.shared_driver = None
+            
+            # 새 브라우저 생성
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            import time
+            
+            # Chrome 옵션 설정
+            chrome_options = self.get_stable_chrome_options()
+            
+            # 브라우저 생성 (재시도 로직 포함)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self.shared_driver = webdriver.Chrome(options=chrome_options)
+                    self.shared_driver.implicitly_wait(10)
+                    self.log_message(f"✅ 브라우저 초기화 성공 (시도 {attempt + 1}/{max_retries})")
+                    break
+                except Exception as e:
+                    self.log_message(f"⚠️ 브라우저 초기화 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
+                    if attempt == max_retries - 1:
+                        self.login_failed_signal.emit("브라우저 초기화 실패")
+                        return
+                    time.sleep(2)
+            
+            # BUYMA 로그인 페이지 접속
+            self.log_message("📄 BUYMA 로그인 페이지에 접속합니다...")
+            self.shared_driver.get("https://www.buyma.com/login/")
+            
+            # 페이지 로딩 대기
+            WebDriverWait(self.shared_driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
+            # 로그인 폼 찾기 및 입력
+            self.log_message("📝 로그인 정보를 입력합니다...")
+            
+            # 이메일 입력
+            email_field = WebDriverWait(self.shared_driver, 10).until(
+                EC.presence_of_element_located((By.NAME, "email"))
+            )
+            email_field.clear()
+            email_field.send_keys(email)
+            
+            # 비밀번호 입력
+            password_field = self.shared_driver.find_element(By.NAME, "password")
+            password_field.clear()
+            password_field.send_keys(password)
+            
+            # 로그인 버튼 클릭
+            login_button = self.shared_driver.find_element(By.CSS_SELECTOR, "input[type='submit'], button[type='submit']")
+            login_button.click()
+            
+            # 로그인 결과 확인 (최대 15초 대기)
+            self.log_message("⏳ 로그인 결과를 확인합니다...")
+            time.sleep(3)
+            
+            # 로그인 성공 여부 확인
+            current_url = self.shared_driver.current_url
+            if "login" not in current_url.lower() or "mypage" in current_url.lower():
+                # 로그인 성공
+                self.is_logged_in = True
+                self.login_success_signal.emit()
+                self.log_message("✅ BUYMA 로그인 성공!")
+            else:
+                # 로그인 실패
+                self.login_failed_signal.emit("로그인 실패: 이메일 또는 비밀번호를 확인해주세요.")
+                
+        except Exception as e:
+            self.log_message(f"❌ 로그인 오류: {str(e)}")
+            self.login_failed_signal.emit(f"로그인 오류: {str(e)}")
+    
+    def on_login_success(self):
+        """로그인 성공 시 UI 업데이트"""
+        self.login_status_label.setText("✅ 로그인 성공")
+        self.login_status_label.setStyleSheet("""
+            QLabel {
+                color: #28a745;
+                font-weight: bold;
+                font-family: '맑은 고딕';
+                padding: 5px;
+                border-radius: 3px;
+                background: #f8f9fa;
+            }
+        """)
+        self.login_btn.setText("🔓 로그아웃")
+        self.login_btn.setEnabled(True)
+        self.login_btn.clicked.disconnect()
+        self.login_btn.clicked.connect(self.logout_buyma)
+        
+        # 크롤링 버튼 활성화 등 다른 기능들도 활성화 가능
+        self.log_message("🎉 BUYMA 로그인이 완료되었습니다. 이제 모든 기능을 사용할 수 있습니다.")
+    
+    def on_login_failed(self, error_message):
+        """로그인 실패 시 UI 업데이트"""
+        self.login_status_label.setText(f"❌ {error_message}")
+        self.login_status_label.setStyleSheet("""
+            QLabel {
+                color: #dc3545;
+                font-weight: bold;
+                font-family: '맑은 고딕';
+                padding: 5px;
+                border-radius: 3px;
+                background: #f8f9fa;
+            }
+        """)
+        self.reset_login_ui()
+        
+        # 브라우저 정리
+        if self.shared_driver:
+            try:
+                self.shared_driver.quit()
+            except:
+                pass
+            self.shared_driver = None
+        
+        self.is_logged_in = False
+    
+    def reset_login_ui(self):
+        """로그인 UI 초기화"""
+        self.login_btn.setText("🔐 BUYMA 로그인")
+        self.login_btn.setEnabled(True)
+        self.login_btn.clicked.disconnect()
+        self.login_btn.clicked.connect(self.start_buyma_login)
+    
+    def logout_buyma(self):
+        """BUYMA 로그아웃"""
+        try:
+            if self.shared_driver:
+                self.shared_driver.quit()
+                self.shared_driver = None
+            
+            self.is_logged_in = False
+            self.login_status_label.setText("❌ 로그인 필요")
+            self.login_status_label.setStyleSheet("""
+                QLabel {
+                    color: #dc3545;
+                    font-weight: bold;
+                    font-family: '맑은 고딕';
+                    padding: 5px;
+                    border-radius: 3px;
+                    background: #f8f9fa;
+                }
+            """)
+            self.reset_login_ui()
+            self.log_message("🔓 BUYMA에서 로그아웃되었습니다.")
+            
+        except Exception as e:
+            self.log_message(f"로그아웃 오류: {str(e)}")
+    
+    def check_login_required(self):
+        """로그인 필요 여부 체크"""
+        if not self.is_logged_in or not self.shared_driver:
+            QMessageBox.warning(
+                self, 
+                "로그인 필요", 
+                "이 기능을 사용하려면 먼저 BUYMA에 로그인해주세요.\n\n설정 탭에서 로그인을 진행해주세요."
+            )
+            return False
+        return True
     
     def extract_detailed_info(self, driver, product_url):
         """상품 상세 정보 추출"""
@@ -5867,15 +6690,34 @@ class Main(QMainWindow):
             print(f"로그 출력 오류: {e} - 메시지: {message}")
     
     def closeEvent(self, event):
-        """프로그램 종료 시 설정 저장 및 타이머 정리"""
-        # 타이머 정리
-        if hasattr(self, 'timer'):
-            self.timer.stop()
-        if hasattr(self, 'system_timer'):
-            self.system_timer.stop()
+        """프로그램 종료 시 설정 저장 및 리소스 정리"""
+        try:
+            # 공용 드라이버 정리
+            if hasattr(self, 'shared_driver') and self.shared_driver:
+                try:
+                    self.shared_driver.quit()
+                    self.log_message("🔄 브라우저가 안전하게 종료되었습니다.")
+                except:
+                    pass
             
-        # 설정 저장
-        self.save_settings()
+            # 타이머 정리
+            if hasattr(self, 'timer'):
+                self.timer.stop()
+            if hasattr(self, 'system_timer'):
+                self.system_timer.stop()
+                
+            # 설정 저장
+            self.save_settings()
+            
+            # 주력 상품 자동 저장
+            if hasattr(self, 'favorite_products'):
+                self.save_favorite_products_auto()
+            
+            self.log_message("👋 프로그램을 종료합니다.")
+            
+        except Exception as e:
+            print(f"프로그램 종료 중 오류: {e}")
+        
         event.accept()
         
     def add_favorite_product(self):
