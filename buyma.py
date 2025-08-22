@@ -1852,6 +1852,11 @@ class Main(QMainWindow):
         self.log_output.setMaximumHeight(200)  # 높이를 200에서 300으로 증가
         self.log_output.setMinimumHeight(200)  # 최소 높이도 설정
         self.log_output.setReadOnly(True)
+        
+        # 자동 스크롤 설정
+        self.log_output.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.log_output.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        
         self.log_output.setStyleSheet("""
             QTextEdit {
                 background: #1e1e1e;
@@ -3095,10 +3100,7 @@ class Main(QMainWindow):
     
     def start_crawling(self):
         """크롤링 시작"""
-        # 로그인 체크
-        if not self.check_login_required():
-            return
-            
+        # 로그인 체크 제거 (크롤링은 로그인 없이 진행)
         url = self.url_input.text().strip()
         count = self.crawl_count.value()
         
@@ -3111,11 +3113,14 @@ class Main(QMainWindow):
             QMessageBox.warning(self, "경고", "올바른 URL을 입력해주세요. (http:// 또는 https://로 시작)")
             return
         
-        # UI 상태 변경
+        # UI 상태 변경 및 비활성화
         self.start_crawling_btn.setEnabled(False)
         self.stop_crawling_btn.setEnabled(True)
         self.crawling_progress.setValue(0)
         self.crawling_status.setText("크롤링 준비중...")
+        
+        # 크롤링 중 UI 전체 비활성화
+        self.disable_ui_during_crawling(True)
         
         # 테이블 초기화
         self.crawling_table.setRowCount(0)
@@ -3134,7 +3139,7 @@ class Main(QMainWindow):
         }
         
         self.crawling_thread = threading.Thread(
-            target=self.run_crawling_with_shared_driver, 
+            target=self.run_crawling, 
             args=(url, count, crawling_settings), 
             daemon=True
         )
@@ -3175,8 +3180,7 @@ class Main(QMainWindow):
             
             # 상품 요소 찾기 (여러 선택자 시도)
             product_selectors = [
-                ".item", ".product", ".goods", "[class*='item']", 
-                "[class*='product']", "[class*='goods']", "li", "div.list-item"
+                "div.product_img"
             ]
             
             product_elements = []
@@ -3214,12 +3218,24 @@ class Main(QMainWindow):
                 if collected_items >= count:
                     break
                 
+                # 메모리 정리 (10개마다)
+                if i > 0 and i % 10 == 0:
+                    import gc
+                    gc.collect()
+                    self.log_message(f"🧹 메모리 정리 완료 ({i}개 처리)")
+                
                 # 브라우저 상태 체크
                 try:
                     self.shared_driver.current_url  # 브라우저가 살아있는지 체크
                 except Exception as e:
                     self.log_message(f"❌ 브라우저 연결 끊어짐: {str(e)}")
-                    break
+                    # 브라우저 재시작 시도
+                    if self.restart_shared_driver():
+                        self.log_message("✅ 브라우저 재시작 성공")
+                        continue
+                    else:
+                        self.log_message("❌ 브라우저 재시작 실패, 크롤링 중단")
+                        break
                 
                 try:
                     # 중복 상품 체크
@@ -3252,17 +3268,24 @@ class Main(QMainWindow):
                         
                         self.log_message(f"✅ 상품 수집: {item_data.get('title', 'Unknown')[:30]}...")
                         
-                        # 설정된 딜레이 적용
-                        time.sleep(settings['delay'])
+                        # 설정된 딜레이 적용 (서버 부하 방지)
+                        time.sleep(max(settings['delay'], 2))  # 최소 2초 대기
                 
                 except Exception as e:
                     self.log_message(f"⚠️ 상품 추출 오류 (#{i+1}): {str(e)}")
                     
                     # 심각한 오류인지 체크
-                    if "QUOTA_EXCEEDED" in str(e) or "chrome not reachable" in str(e).lower():
-                        self.log_message(f"❌ 심각한 오류 감지, 크롤링 중단: {str(e)}")
-                        break
+                    error_str = str(e).lower()
+                    if any(keyword in error_str for keyword in ["quota_exceeded", "chrome not reachable", "session deleted", "no such window"]):
+                        self.log_message(f"❌ 심각한 오류 감지, 브라우저 재시작 시도: {str(e)}")
+                        if self.restart_shared_driver():
+                            self.log_message("✅ 브라우저 재시작 성공, 크롤링 계속")
+                            continue
+                        else:
+                            self.log_message("❌ 브라우저 재시작 실패, 크롤링 중단")
+                            break
                     
+                    # 일반적인 오류는 계속 진행
                     continue
             
             # 크롤링 완료
@@ -3273,8 +3296,21 @@ class Main(QMainWindow):
         except Exception as e:
             self.log_message(f"❌ 크롤링 오류: {str(e)}")
             self.crawling_status_signal.emit("오류 발생")
+            
+            # 오류 상세 정보 로깅
+            import traceback
+            self.log_message(f"📋 오류 상세: {traceback.format_exc()}")
+            
         finally:
             # 공용 드라이버는 종료하지 않음 (로그인 상태 유지)
+            # 단, 메모리 정리는 수행
+            try:
+                import gc
+                gc.collect()
+                self.log_message("🧹 최종 메모리 정리 완료")
+            except:
+                pass
+                
             self.log_message("🔄 크롤링 완료. 브라우저는 로그인 상태로 유지됩니다.")
             
             # UI 상태 복원
@@ -3440,12 +3476,12 @@ class Main(QMainWindow):
             }
     
     def run_crawling(self, url, count, settings):
-        """크롤링 실행 (별도 스레드) - 설정 적용"""
+        """크롤링 실행 (별도 스레드) - 새 브라우저 사용"""
         driver = None
         crawled_products = []  # 중복 체크용
         
         try:
-            self.log_message("🌐 브라우저를 시작합니다...")
+            self.log_message("🌐 크롤링용 새 브라우저를 시작합니다...")
             self.log_message(f"⚙️ 설정: 이미지포함={settings['include_images']}, "
                            f"옵션포함={settings['include_options']}, "
                            f"중복제외={settings['skip_duplicates']}")
@@ -3461,32 +3497,8 @@ class Main(QMainWindow):
             
             import time
             
-            # Chrome 옵션 설정 (API 할당량 오류 해결)
-            chrome_options = Options()
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--window-size=1920,1080')
-            
-            # Google API 관련 오류 방지
-            chrome_options.add_argument('--disable-background-networking')
-            chrome_options.add_argument('--disable-background-timer-throttling')
-            chrome_options.add_argument('--disable-backgrounding-occluded-windows')
-            chrome_options.add_argument('--disable-renderer-backgrounding')
-            chrome_options.add_argument('--disable-features=TranslateUI')
-            chrome_options.add_argument('--disable-ipc-flooding-protection')
-            
-            # 할당량 초과 방지
-            chrome_options.add_argument('--disable-component-extensions-with-background-pages')
-            chrome_options.add_argument('--disable-default-apps')
-            chrome_options.add_argument('--disable-extensions')
-            
-            # 안정성 향상
-            chrome_options.add_argument('--no-first-run')
-            chrome_options.add_argument('--no-default-browser-check')
-            chrome_options.add_argument('--disable-logging')
-            chrome_options.add_argument('--disable-gpu-logging')
-            chrome_options.add_argument('--silent')
+            # Chrome 옵션 설정 (크롤링 최적화)
+            chrome_options = self.get_stable_chrome_options()
             
             # WebDriver 생성 (재시도 로직 포함)
             max_retries = 3
@@ -3494,7 +3506,7 @@ class Main(QMainWindow):
                 try:
                     driver = webdriver.Chrome(options=chrome_options)
                     driver.implicitly_wait(self.timeout_setting.value())
-                    self.log_message(f"✅ 브라우저 초기화 성공 (시도 {attempt + 1}/{max_retries})")
+                    self.log_message(f"✅ 크롤링용 브라우저 초기화 성공 (시도 {attempt + 1}/{max_retries})")
                     break
                 except Exception as e:
                     self.log_message(f"⚠️ 브라우저 초기화 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
@@ -3648,7 +3660,7 @@ class Main(QMainWindow):
                     
                     # 드라이버 종료
                     driver.quit()
-                    self.log_message("🔄 브라우저가 안전하게 종료되었습니다.")
+                    self.log_message("🔄 크롤링용 브라우저가 안전하게 종료되었습니다.")
                 except Exception as cleanup_error:
                     self.log_message(f"⚠️ 브라우저 종료 중 오류: {str(cleanup_error)}")
             
@@ -3884,10 +3896,20 @@ class Main(QMainWindow):
         options.add_argument('--disable-extensions')
         options.add_argument('--disable-plugins')
         
-        # 메모리 및 성능 최적화
+        # 메모리 및 성능 최적화 (대량 크롤링용)
         options.add_argument('--memory-pressure-off')
         options.add_argument('--max_old_space_size=4096')
         options.add_argument('--disable-background-mode')
+        options.add_argument('--disable-background-timer-throttling')
+        options.add_argument('--disable-renderer-backgrounding')
+        options.add_argument('--disable-backgrounding-occluded-windows')
+        
+        # 대량 처리를 위한 추가 옵션
+        options.add_argument('--aggressive-cache-discard')
+        options.add_argument('--disable-hang-monitor')
+        options.add_argument('--disable-prompt-on-repost')
+        options.add_argument('--disable-domain-reliability')
+        options.add_argument('--disable-component-update')
         
         # 로그 및 디버깅 비활성화
         options.add_argument('--no-first-run')
@@ -3992,7 +4014,7 @@ class Main(QMainWindow):
             self.log_message("📝 로그인 정보를 입력합니다...")
             
             # 이메일 입력 (여러 선택자 시도)
-            email_selectors = ["input[name='email']", "input[type='email']", "#email", ".email"]
+            email_selectors = ["#txtLoginId"]
             email_field = None
             for selector in email_selectors:
                 try:
@@ -4011,7 +4033,7 @@ class Main(QMainWindow):
             email_field.send_keys(email)
             
             # 비밀번호 입력
-            password_selectors = ["input[name='password']", "input[type='password']", "#password", ".password"]
+            password_selectors = ["#txtLoginPass"]
             password_field = None
             for selector in password_selectors:
                 try:
@@ -4029,11 +4051,7 @@ class Main(QMainWindow):
             
             # 로그인 버튼 클릭
             login_selectors = [
-                "input[type='submit']", 
-                "button[type='submit']", 
-                ".login-btn", 
-                ".btn-login",
-                "button:contains('로그인')"
+                "#login_do"
             ]
             login_button = None
             for selector in login_selectors:
@@ -4165,128 +4183,128 @@ class Main(QMainWindow):
             return False
         return True
     
-    def start_buyma_login(self):
-        """BUYMA 로그인 시작"""
-        try:
-            email = self.email_input.text().strip()
-            password = self.password_input.text().strip()
+    # def start_buyma_login(self):
+    #     """BUYMA 로그인 시작"""
+    #     try:
+    #         email = self.email_input.text().strip()
+    #         password = self.password_input.text().strip()
             
-            if not email or not password:
-                QMessageBox.warning(self, "입력 오류", "이메일과 비밀번호를 모두 입력해주세요.")
-                return
+    #         if not email or not password:
+    #             QMessageBox.warning(self, "입력 오류", "이메일과 비밀번호를 모두 입력해주세요.")
+    #             return
             
-            # 로그인 버튼 비활성화
-            self.login_btn.setEnabled(False)
-            self.login_btn.setText("🔄 로그인 중...")
-            self.login_status_label.setText("🔄 로그인 진행 중...")
-            self.login_status_label.setStyleSheet("""
-                QLabel {
-                    color: #ffc107;
-                    font-weight: bold;
-                    font-family: '맑은 고딕';
-                    padding: 5px;
-                    border-radius: 3px;
-                    background: #f8f9fa;
-                }
-            """)
+    #         # 로그인 버튼 비활성화
+    #         self.login_btn.setEnabled(False)
+    #         self.login_btn.setText("🔄 로그인 중...")
+    #         self.login_status_label.setText("🔄 로그인 진행 중...")
+    #         self.login_status_label.setStyleSheet("""
+    #             QLabel {
+    #                 color: #ffc107;
+    #                 font-weight: bold;
+    #                 font-family: '맑은 고딕';
+    #                 padding: 5px;
+    #                 border-radius: 3px;
+    #                 background: #f8f9fa;
+    #             }
+    #         """)
             
-            # 별도 스레드에서 로그인 실행
-            self.login_thread = threading.Thread(
-                target=self.perform_buyma_login, 
-                args=(email, password), 
-                daemon=True
-            )
-            self.login_thread.start()
+    #         # 별도 스레드에서 로그인 실행
+    #         self.login_thread = threading.Thread(
+    #             target=self.perform_buyma_login, 
+    #             args=(email, password), 
+    #             daemon=True
+    #         )
+    #         self.login_thread.start()
             
-        except Exception as e:
-            self.log_message(f"로그인 시작 오류: {str(e)}")
-            self.reset_login_ui()
+    #     except Exception as e:
+    #         self.log_message(f"로그인 시작 오류: {str(e)}")
+    #         self.reset_login_ui()
     
-    def perform_buyma_login(self, email, password):
-        """BUYMA 로그인 수행 (별도 스레드)"""
-        try:
-            self.log_message("🔐 BUYMA 로그인을 시작합니다...")
+    # def perform_buyma_login(self, email, password):
+    #     """BUYMA 로그인 수행 (별도 스레드)"""
+    #     try:
+    #         self.log_message("🔐 BUYMA 로그인을 시작합니다...")
             
-            # 기존 드라이버가 있으면 종료
-            if self.shared_driver:
-                try:
-                    self.shared_driver.quit()
-                except:
-                    pass
-                self.shared_driver = None
+    #         # 기존 드라이버가 있으면 종료
+    #         if self.shared_driver:
+    #             try:
+    #                 self.shared_driver.quit()
+    #             except:
+    #                 pass
+    #             self.shared_driver = None
             
-            # 새 브라우저 생성
-            from selenium import webdriver
-            from selenium.webdriver.chrome.options import Options
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
-            import time
+    #         # 새 브라우저 생성
+    #         from selenium import webdriver
+    #         from selenium.webdriver.chrome.options import Options
+    #         from selenium.webdriver.common.by import By
+    #         from selenium.webdriver.support.ui import WebDriverWait
+    #         from selenium.webdriver.support import expected_conditions as EC
+    #         import time
             
-            # Chrome 옵션 설정
-            chrome_options = self.get_stable_chrome_options()
+    #         # Chrome 옵션 설정
+    #         chrome_options = self.get_stable_chrome_options()
             
-            # 브라우저 생성 (재시도 로직 포함)
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    self.shared_driver = webdriver.Chrome(options=chrome_options)
-                    self.shared_driver.implicitly_wait(10)
-                    self.log_message(f"✅ 브라우저 초기화 성공 (시도 {attempt + 1}/{max_retries})")
-                    break
-                except Exception as e:
-                    self.log_message(f"⚠️ 브라우저 초기화 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
-                    if attempt == max_retries - 1:
-                        self.login_failed_signal.emit("브라우저 초기화 실패")
-                        return
-                    time.sleep(2)
+    #         # 브라우저 생성 (재시도 로직 포함)
+    #         max_retries = 3
+    #         for attempt in range(max_retries):
+    #             try:
+    #                 self.shared_driver = webdriver.Chrome(options=chrome_options)
+    #                 self.shared_driver.implicitly_wait(10)
+    #                 self.log_message(f"✅ 브라우저 초기화 성공 (시도 {attempt + 1}/{max_retries})")
+    #                 break
+    #             except Exception as e:
+    #                 self.log_message(f"⚠️ 브라우저 초기화 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
+    #                 if attempt == max_retries - 1:
+    #                     self.login_failed_signal.emit("브라우저 초기화 실패")
+    #                     return
+    #                 time.sleep(2)
             
-            # BUYMA 로그인 페이지 접속
-            self.log_message("📄 BUYMA 로그인 페이지에 접속합니다...")
-            self.shared_driver.get("https://www.buyma.com/login/")
+    #         # BUYMA 로그인 페이지 접속
+    #         self.log_message("📄 BUYMA 로그인 페이지에 접속합니다...")
+    #         self.shared_driver.get("https://www.buyma.com/login/")
             
-            # 페이지 로딩 대기
-            WebDriverWait(self.shared_driver, 10).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
+    #         # 페이지 로딩 대기
+    #         WebDriverWait(self.shared_driver, 10).until(
+    #             EC.presence_of_element_located((By.TAG_NAME, "body"))
+    #         )
             
-            # 로그인 폼 찾기 및 입력
-            self.log_message("📝 로그인 정보를 입력합니다...")
+    #         # 로그인 폼 찾기 및 입력
+    #         self.log_message("📝 로그인 정보를 입력합니다...")
             
-            # 이메일 입력
-            email_field = WebDriverWait(self.shared_driver, 10).until(
-                EC.presence_of_element_located((By.NAME, "email"))
-            )
-            email_field.clear()
-            email_field.send_keys(email)
+    #         # 이메일 입력
+    #         email_field = WebDriverWait(self.shared_driver, 10).until(
+    #             EC.presence_of_element_located((By.NAME, "email"))
+    #         )
+    #         email_field.clear()
+    #         email_field.send_keys(email)
             
-            # 비밀번호 입력
-            password_field = self.shared_driver.find_element(By.NAME, "password")
-            password_field.clear()
-            password_field.send_keys(password)
+    #         # 비밀번호 입력
+    #         password_field = self.shared_driver.find_element(By.NAME, "password")
+    #         password_field.clear()
+    #         password_field.send_keys(password)
             
-            # 로그인 버튼 클릭
-            login_button = self.shared_driver.find_element(By.CSS_SELECTOR, "input[type='submit'], button[type='submit']")
-            login_button.click()
+    #         # 로그인 버튼 클릭
+    #         login_button = self.shared_driver.find_element(By.CSS_SELECTOR, "input[type='submit'], button[type='submit']")
+    #         login_button.click()
             
-            # 로그인 결과 확인 (최대 15초 대기)
-            self.log_message("⏳ 로그인 결과를 확인합니다...")
-            time.sleep(3)
+    #         # 로그인 결과 확인 (최대 15초 대기)
+    #         self.log_message("⏳ 로그인 결과를 확인합니다...")
+    #         time.sleep(3)
             
-            # 로그인 성공 여부 확인
-            current_url = self.shared_driver.current_url
-            if "login" not in current_url.lower() or "mypage" in current_url.lower():
-                # 로그인 성공
-                self.is_logged_in = True
-                self.login_success_signal.emit()
-                self.log_message("✅ BUYMA 로그인 성공!")
-            else:
-                # 로그인 실패
-                self.login_failed_signal.emit("로그인 실패: 이메일 또는 비밀번호를 확인해주세요.")
+    #         # 로그인 성공 여부 확인
+    #         current_url = self.shared_driver.current_url
+    #         if "login" not in current_url.lower() or "mypage" in current_url.lower():
+    #             # 로그인 성공
+    #             self.is_logged_in = True
+    #             self.login_success_signal.emit()
+    #             self.log_message("✅ BUYMA 로그인 성공!")
+    #         else:
+    #             # 로그인 실패
+    #             self.login_failed_signal.emit("로그인 실패: 이메일 또는 비밀번호를 확인해주세요.")
                 
-        except Exception as e:
-            self.log_message(f"❌ 로그인 오류: {str(e)}")
-            self.login_failed_signal.emit(f"로그인 오류: {str(e)}")
+    #     except Exception as e:
+    #         self.log_message(f"❌ 로그인 오류: {str(e)}")
+    #         self.login_failed_signal.emit(f"로그인 오류: {str(e)}")
     
     def on_login_success(self):
         """로그인 성공 시 UI 업데이트"""
@@ -4376,6 +4394,106 @@ class Main(QMainWindow):
             )
             return False
         return True
+    
+    def restart_shared_driver(self):
+        """공용 드라이버 재시작"""
+        try:
+            self.log_message("🔄 브라우저를 재시작합니다...")
+            
+            # 기존 드라이버 종료
+            if self.shared_driver:
+                try:
+                    self.shared_driver.quit()
+                except:
+                    pass
+                self.shared_driver = None
+            
+            # 새 드라이버 생성
+            from selenium import webdriver
+            import time
+            chrome_options = self.get_stable_chrome_options()
+            
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self.shared_driver = webdriver.Chrome(options=chrome_options)
+                    self.shared_driver.implicitly_wait(10)
+                    
+                    # BUYMA 메인 페이지로 이동 (로그인 상태 확인)
+                    self.shared_driver.get("https://www.buyma.com/")
+                    time.sleep(2)
+                    
+                    # 로그인 상태 확인
+                    page_source = self.shared_driver.page_source.lower()
+                    if "logout" in page_source or "마이페이지" in page_source:
+                        self.log_message("✅ 브라우저 재시작 및 로그인 상태 확인 완료")
+                        return True
+                    else:
+                        self.log_message("⚠️ 로그인 상태가 유지되지 않았습니다.")
+                        self.is_logged_in = False
+                        return False
+                        
+                except Exception as e:
+                    self.log_message(f"⚠️ 브라우저 재시작 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
+                    if attempt == max_retries - 1:
+                        return False
+                    time.sleep(2)
+            
+            return False
+            
+        except Exception as e:
+            self.log_message(f"❌ 브라우저 재시작 오류: {str(e)}")
+            return False
+    
+    def disable_ui_during_crawling(self, disable=True):
+        """크롤링 중 UI 비활성화/활성화"""
+        try:
+            # 크롤링 설정 비활성화
+            self.url_input.setEnabled(not disable)
+            self.crawl_count.setEnabled(not disable)
+            self.delay_time.setEnabled(not disable)
+            self.include_images.setEnabled(not disable)
+            self.include_options.setEnabled(not disable)
+            self.skip_duplicates.setEnabled(not disable)
+            
+            # 크롤링 시작 시 모니터링 탭으로 이동 및 고정
+            if disable:
+                # 모니터링 탭으로 강제 이동 (몇 번째 탭인지 찾기)
+                for i in range(self.tab_widget.count()):
+                    if "모니터링" in self.tab_widget.tabText(i):
+                        self.tab_widget.setCurrentIndex(i)
+                        break
+                
+                # 다른 탭들 비활성화 (모니터링 탭만 활성 상태 유지)
+                for i in range(self.tab_widget.count()):
+                    tab_text = self.tab_widget.tabText(i)
+                    if "모니터링" not in tab_text:
+                        self.tab_widget.setTabEnabled(i, False)
+            else:
+                # 크롤링 완료 시 모든 탭 활성화
+                for i in range(self.tab_widget.count()):
+                    self.tab_widget.setTabEnabled(i, True)
+            
+            # 크롤링 테이블의 액션 버튼들 비활성화
+            if disable:
+                for row in range(self.crawling_table.rowCount()):
+                    widget = self.crawling_table.cellWidget(row, 7)  # 액션 버튼 컬럼
+                    if widget:
+                        widget.setEnabled(False)
+            else:
+                for row in range(self.crawling_table.rowCount()):
+                    widget = self.crawling_table.cellWidget(row, 7)
+                    if widget:
+                        widget.setEnabled(True)
+            
+            # 상태 표시
+            if disable:
+                self.log_message("🔒 크롤링 중 - 📺 모니터링 탭에서 실시간 진행 상황을 확인하세요")
+            else:
+                self.log_message("🔓 크롤링 완료 - 모든 탭 사용이 가능합니다")
+                
+        except Exception as e:
+            self.log_message(f"UI 상태 변경 오류: {str(e)}")
     
     def extract_detailed_info(self, driver, product_url):
         """상품 상세 정보 추출"""
@@ -4928,6 +5046,9 @@ class Main(QMainWindow):
         # UI 상태 복원
         self.start_crawling_btn.setEnabled(True)
         self.stop_crawling_btn.setEnabled(False)
+        
+        # 크롤링 중지 시 UI 활성화
+        self.disable_ui_during_crawling(False)
     
     def preview_crawling(self):
         """크롤링 미리보기"""
@@ -6665,18 +6786,30 @@ class Main(QMainWindow):
                 QMessageBox.critical(self, "오류", f"데이터 초기화에 실패했습니다: {str(e)}")
     
     def log_message(self, message):
-        """로그 메시지 출력 (안전장치 포함)"""
+        """로그 메시지 출력 (자동 스크롤 포함)"""
         try:
             timestamp = datetime.now().strftime('%H:%M:%S')
             formatted_message = f"[{timestamp}] {message}"
             
             # log_output이 존재하는지 확인
             if hasattr(self, 'log_output') and self.log_output is not None:
+                # 로그 메시지 추가
                 self.log_output.append(formatted_message)
                 
-                # 로그 자동 스크롤
+                # 자동 스크롤 (여러 방법으로 확실하게)
                 scrollbar = self.log_output.verticalScrollBar()
                 scrollbar.setValue(scrollbar.maximum())
+                
+                # 추가 스크롤 보장
+                self.log_output.moveCursor(self.log_output.textCursor().End)
+                self.log_output.ensureCursorVisible()
+                
+                # QApplication 이벤트 처리 (UI 업데이트 보장)
+                QApplication.processEvents()
+                
+                # 지연된 스크롤 보장 (QTimer 사용)
+                QTimer.singleShot(10, self.ensure_log_scroll)
+                
             else:
                 # UI가 아직 준비되지 않은 경우 콘솔에 출력
                 print(formatted_message)
@@ -6688,6 +6821,22 @@ class Main(QMainWindow):
         except Exception as e:
             # 로그 출력 중 오류가 발생해도 프로그램이 중단되지 않도록
             print(f"로그 출력 오류: {e} - 메시지: {message}")
+    
+    def ensure_log_scroll(self):
+        """로그창 스크롤 보장 (지연 실행)"""
+        try:
+            if hasattr(self, 'log_output') and self.log_output is not None:
+                # 최종 스크롤 보장
+                scrollbar = self.log_output.verticalScrollBar()
+                scrollbar.setValue(scrollbar.maximum())
+                
+                # 커서를 맨 끝으로 이동
+                cursor = self.log_output.textCursor()
+                cursor.movePosition(cursor.End)
+                self.log_output.setTextCursor(cursor)
+                
+        except Exception as e:
+            pass  # 스크롤 오류는 무시
     
     def closeEvent(self, event):
         """프로그램 종료 시 설정 저장 및 리소스 정리"""
@@ -7321,6 +7470,10 @@ class Main(QMainWindow):
             
             self.crawling_table.setCellWidget(row, 7, action_widget)
             
+            # 크롤링 중이면 새로 추가된 액션 버튼도 비활성화
+            if not self.start_crawling_btn.isEnabled():  # 크롤링 중인지 확인
+                action_widget.setEnabled(False)
+            
             # 행 높이를 버튼 높이에 맞춤
             self.crawling_table.setRowHeight(row, 35)
             
@@ -7338,6 +7491,9 @@ class Main(QMainWindow):
             self.stop_crawling_btn.setEnabled(False)
             self.crawling_status.setText("크롤링 완료")
             self.crawling_progress.setValue(100)
+            
+            # 크롤링 완료 후 UI 활성화
+            self.disable_ui_during_crawling(False)
             
         except Exception as e:
             print(f"크롤링 완료 처리 오류: {e}")

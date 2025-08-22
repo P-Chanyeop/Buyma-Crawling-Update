@@ -1,12 +1,19 @@
 {
-  "email": "",
-  "default_discount": 100,
-  "default_min_margin": 500,
-  "work_delay": 3,
+  "email": "ourshimizu@gmail.com",
+  "browser": "Chrome",
+  "timeout": 10,
   "retry_count": 3,
-  "enable_sound": true,
-  "enable_popup": true,
-  "auto_backup": true,
-  "headless_mode": false,
-  "log_level": "INFO"
+  "crawl_count": 50,
+  "delay_time": 3,
+  "discount_amount": 100,
+  "min_margin": 500,
+  "exclude_loss_products": true,
+  "auto_mode": true,
+  "dashboard_url": "",
+  "dashboard_count": 20,
+  "dashboard_discount": 100,
+  "max_images": 10,
+  "include_images": true,
+  "include_options": true,
+  "skip_duplicates": true
 }
