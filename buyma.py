@@ -290,14 +290,14 @@ class Main(QMainWindow):
         self.init_ui()
         self.load_settings()
         
-        # 주력 상품 자동 로드
-        self.load_favorite_products_on_startup()
-        
         # 크롤링 시그널 연결
         self.crawling_progress_signal.connect(self.update_crawling_progress)
         self.crawling_status_signal.connect(self.update_crawling_status)
         self.crawling_result_signal.connect(self.add_crawling_result_safe)
         self.crawling_finished_signal.connect(self.crawling_finished_safe)
+        
+        # 모든 UI 초기화 완료 후 주력 상품 자동 로드
+        self.load_favorite_products_on_startup()
         
     def init_ui(self):
         """UI 초기화"""
@@ -1369,8 +1369,8 @@ class Main(QMainWindow):
         
         layout.addWidget(table_group)
         
-        # 초기 데이터 로드
-        self.load_favorite_products_on_startup()
+        # 초기 데이터 로드 (UI 완성 후에 호출하도록 제거)
+        # self.load_favorite_products_on_startup()  # 이 줄 제거
         
         self.tab_widget.addTab(tab, "⭐ 주력 상품")
         
@@ -1465,7 +1465,22 @@ class Main(QMainWindow):
         self.crawling_table.setHorizontalHeaderLabels([
             "상품명", "브랜드", "가격", "이미지 수", "색상/사이즈", "URL", "상태", "액션"
         ])
+        
+        # 컬럼 너비 조정 (액션 컬럼을 더 넓게)
+        self.crawling_table.setColumnWidth(0, 200)  # 상품명
+        self.crawling_table.setColumnWidth(1, 120)  # 브랜드
+        self.crawling_table.setColumnWidth(2, 100)  # 가격
+        self.crawling_table.setColumnWidth(3, 80)   # 이미지 수
+        self.crawling_table.setColumnWidth(4, 100)  # 색상/사이즈
+        self.crawling_table.setColumnWidth(5, 150)  # URL
+        self.crawling_table.setColumnWidth(6, 100)  # 상태
+        self.crawling_table.setColumnWidth(7, 200)  # 액션 (4개 버튼 가로 배치용)
+        
+        # 마지막 컬럼 자동 확장 비활성화 (액션 컬럼 너비 고정)
         self.crawling_table.horizontalHeader().setStretchLastSection(True)
+        
+        # 기본 행 높이 설정 (버튼 높이에 맞춤)
+        self.crawling_table.verticalHeader().setDefaultSectionSize(35)
         
         result_layout.addWidget(self.crawling_table)
         
@@ -3060,15 +3075,31 @@ class Main(QMainWindow):
         self.log_message(f"📋 URL: {url}")
         self.log_message(f"📋 목표 개수: {count}개")
         
-        # 별도 스레드에서 크롤링 실행
-        self.crawling_thread = threading.Thread(target=self.run_crawling, args=(url, count), daemon=True)
+        # 별도 스레드에서 크롤링 실행 (필요한 설정만 포함)
+        crawling_settings = {
+            'include_images': self.include_images.isChecked(),
+            'include_options': self.include_options.isChecked(), 
+            'skip_duplicates': self.skip_duplicates.isChecked(),
+            'delay': self.delay_time.value()
+        }
+        
+        self.crawling_thread = threading.Thread(
+            target=self.run_crawling, 
+            args=(url, count, crawling_settings), 
+            daemon=True
+        )
         self.crawling_thread.start()
     
-    def run_crawling(self, url, count):
-        """크롤링 실행 (별도 스레드)"""
+    def run_crawling(self, url, count, settings):
+        """크롤링 실행 (별도 스레드) - 설정 적용"""
         driver = None
+        crawled_products = []  # 중복 체크용
+        
         try:
             self.log_message("🌐 브라우저를 시작합니다...")
+            self.log_message(f"⚙️ 설정: 이미지포함={settings['include_images']}, "
+                           f"옵션포함={settings['include_options']}, "
+                           f"중복제외={settings['skip_duplicates']}")
             
             # Selenium WebDriver 설정
             from selenium import webdriver
@@ -3081,16 +3112,49 @@ class Main(QMainWindow):
             
             import time
             
-            # Chrome 옵션 설정
+            # Chrome 옵션 설정 (API 할당량 오류 해결)
             chrome_options = Options()
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
             chrome_options.add_argument('--disable-gpu')
             chrome_options.add_argument('--window-size=1920,1080')
             
-            # WebDriver 생성
-            driver = webdriver.Chrome(options=chrome_options)
-            driver.implicitly_wait(self.timeout_setting.value())
+            # Google API 관련 오류 방지
+            chrome_options.add_argument('--disable-background-networking')
+            chrome_options.add_argument('--disable-background-timer-throttling')
+            chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+            chrome_options.add_argument('--disable-renderer-backgrounding')
+            chrome_options.add_argument('--disable-features=TranslateUI')
+            chrome_options.add_argument('--disable-ipc-flooding-protection')
+            
+            # 할당량 초과 방지
+            chrome_options.add_argument('--disable-component-extensions-with-background-pages')
+            chrome_options.add_argument('--disable-default-apps')
+            chrome_options.add_argument('--disable-extensions')
+            
+            # 안정성 향상
+            chrome_options.add_argument('--no-first-run')
+            chrome_options.add_argument('--no-default-browser-check')
+            chrome_options.add_argument('--disable-logging')
+            chrome_options.add_argument('--disable-gpu-logging')
+            chrome_options.add_argument('--silent')
+            
+            # WebDriver 생성 (재시도 로직 포함)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    driver = webdriver.Chrome(options=chrome_options)
+                    driver.implicitly_wait(self.timeout_setting.value())
+                    self.log_message(f"✅ 브라우저 초기화 성공 (시도 {attempt + 1}/{max_retries})")
+                    break
+                except Exception as e:
+                    self.log_message(f"⚠️ 브라우저 초기화 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
+                    if attempt == max_retries - 1:
+                        self.log_message("❌ 브라우저 초기화 최종 실패")
+                        self.crawling_status_signal.emit("브라우저 초기화 실패")
+                        self.crawling_finished_signal.emit()
+                        return
+                    time.sleep(2)  # 재시도 전 대기
             
             self.log_message(f"📄 페이지에 접속합니다: {url}")
             
@@ -3162,11 +3226,32 @@ class Main(QMainWindow):
                 if collected_items >= count:
                     break
                 
+                # 브라우저 상태 체크
                 try:
-                    # 상품 정보 추출
-                    item_data = self.extract_item_data(link, i, driver)
+                    driver.current_url  # 브라우저가 살아있는지 체크
+                except Exception as e:
+                    self.log_message(f"❌ 브라우저 연결 끊어짐: {str(e)}")
+                    break
+                
+                try:
+                    # 중복 상품 체크
+                    if settings['skip_duplicates']:
+                        if self.is_duplicate_product(link, crawled_products):
+                            self.log_message(f"⏭️ 중복 상품 건너뛰기: {link}")
+                            continue
+                    
+                    # 상품 정보 추출 (설정 전달)
+                    item_data = self.extract_item_data(link, i, driver, settings)
                     
                     if item_data:
+                        # 중복 체크용 리스트에 추가
+                        if settings['skip_duplicates']:
+                            crawled_products.append({
+                                'url': link,
+                                'title': item_data.get('title', ''),
+                                'brand': item_data.get('brand', '')
+                            })
+                        
                         collected_items += 1
                         
                         # UI 업데이트 (시그널로 안전하게 처리)
@@ -3179,12 +3264,18 @@ class Main(QMainWindow):
                         
                         self.log_message(f"✅ 상품 수집: {item_data.get('title', 'Unknown')[:30]}...")
                         
-                        # 딜레이 추가 (서버 부하 방지)
+                        # 설정된 딜레이 적용
                         import time
-                        time.sleep(self.delay_time.value())
+                        time.sleep(settings['delay'])
                 
                 except Exception as e:
                     self.log_message(f"⚠️ 상품 추출 오류 (#{i+1}): {str(e)}")
+                    
+                    # 심각한 오류인지 체크
+                    if "QUOTA_EXCEEDED" in str(e) or "chrome not reachable" in str(e).lower():
+                        self.log_message(f"❌ 심각한 오류 감지, 크롤링 중단: {str(e)}")
+                        break
+                    
                     continue
             
             # 완료 처리 (시그널로 안전하게 처리)
@@ -3198,14 +3289,29 @@ class Main(QMainWindow):
             self.crawling_status_signal.emit("오류 발생")
             self.crawling_finished_signal.emit()
         finally:
+            # 브라우저 안전한 종료
             if driver:
-                driver.quit()
+                try:
+                    # 모든 탭 닫기
+                    for handle in driver.window_handles:
+                        driver.switch_to.window(handle)
+                        driver.close()
+                    
+                    # 드라이버 종료
+                    driver.quit()
+                    self.log_message("🔄 브라우저가 안전하게 종료되었습니다.")
+                except Exception as cleanup_error:
+                    self.log_message(f"⚠️ 브라우저 종료 중 오류: {str(cleanup_error)}")
+            
+            # 메모리 정리
+            import gc
+            gc.collect()
             
             # UI 상태 복원 (시그널로 안전하게 처리)
             self.crawling_finished_signal.emit()
     
-    def extract_item_data(self, url, index, driver):
-        """상품 데이터 추출"""
+    def extract_item_data(self, url, index, driver, settings):
+        """상품 데이터 추출 (안전장치 추가) - 설정 적용"""
         try:
             # 상품 url 추출
             self.log_message(f"🔗 상품 #{index+1} 페이지 접속 중...")
@@ -3219,140 +3325,234 @@ class Main(QMainWindow):
             
             driver.implicitly_wait(10)
             
-            # 기본 정보 추출
-            # title_selectors = [
-            #     ".item-title", ".product-title", ".title", 
-            #     "h3", "h4", ".name", "[class*='title']",
-            #     ".goods-name", ".product-name"
-            # ]
-            # title = self.find_text_by_selectors(element, title_selectors) or f"상품 #{index+1}"
+            # 기본 정보 추출 (안전장치 추가)
+            title = "상품명 없음"
+            brand = "브랜드 없음"
+            price = "가격 정보 없음"
+            product_url = url
+            images = []
+            colors = []
+            sizes = []
+            description_text = ""
+            category_text = ""
             
-            # # 브랜드 추출
-            # brand_selectors = [
-            #     ".brand", ".brand-name", "[class*='brand']", 
-            #     ".shop-name", "[class*='shop']", ".seller"
-            # ]
-            # brand = self.find_text_by_selectors(element, brand_selectors) or "Unknown Brand"
+            # 상품명 추출 (안전장치)
+            try:
+                title_element = driver.find_element(By.CSS_SELECTOR, "span.itemdetail-item-name")
+                title = title_element.text.strip() if title_element else f"상품 #{index+1}"
+            except Exception as e:
+                self.log_message(f"⚠️ 상품명 추출 실패: {str(e)}")
+                title = f"상품 #{index+1}"
             
-            # # 가격 추출
-            # price_selectors = [
-            #     ".price", ".cost", "[class*='price']", 
-            #     ".amount", "[class*='cost']", ".money"
-            # ]
-            # price = self.find_text_by_selectors(element, price_selectors) or "가격 정보 없음"
+            # 브랜드명 추출 (안전장치)
+            try:
+                brand_element = driver.find_element(By.CSS_SELECTOR, "div.brand-wrap")
+                brand = brand_element.text.replace("i", "").strip() if brand_element else "Unknown Brand"
+            except Exception as e:
+                self.log_message(f"⚠️ 브랜드 추출 실패: {str(e)}")
+                brand = "Unknown Brand"
             
-            # # URL 추출
-            # product_url = ""
-            # try:
-            #     link_element = element.find_element(By.TAG_NAME, "a")
-            #     product_url = link_element.get_attribute("href") or ""
-            # except:
-            #     try:
-            #         product_url = element.get_attribute("href") or ""
-            #     except:
-            #         product_url = "URL 없음"
+            # 가격 추출 (안전장치)
+            try:
+                price_element = driver.find_element(By.CSS_SELECTOR, "span.price_txt")
+                price = price_element.text.strip() if price_element else "가격 정보 없음"
+            except Exception as e:
+                self.log_message(f"⚠️ 가격 추출 실패: {str(e)}")
+                price = "가격 정보 없음"
             
-            # # 상세 정보 수집 (상품 페이지 접속)
-            # detailed_info = {}
-            # if product_url and product_url != "URL 없음":
-            #     detailed_info = self.extract_detailed_info(driver, product_url)
-            
-            # 상품명 추출 
-            title = driver.find_element(By.CSS_SELECTOR, "span.itemdetail-item-name").text.strip()
-            
-            # 브랜드명 추출
-            brand = driver.find_element(By.CSS_SELECTOR, "div.brand-wrap").text.strip()
-            
-            # 가격 추출 
-            price = driver.find_element(By.CSS_SELECTOR, "span.price_txt").text.strip()
-            
-            # 상품 url 추출
-            product_url = driver.current_url
-            
-            # 상품 이미지 추출            
-            ul = driver.find_element(By.CSS_SELECTOR, "ul.item_sumb_img")
-            li_elements = ul.find_elements(By.TAG_NAME, "li")
-            
-            for li in li_elements:
-                a = li.find_element(By.TAG_NAME, "a")
-                src = a.get_attribute("href")
-                if src and src.startswith('http'):
-                    if 'images' not in locals():
-                        images = []
-                    images.append(src)
+            # 이미지 추출 (설정 확인)
+            if settings['include_images']:
+                try:
+                    ul = driver.find_element(By.CSS_SELECTOR, "ul.item_sumb_img")
+                    li_elements = ul.find_elements(By.TAG_NAME, "li")
                     
-            # 색상 및 사이즈 정보 추출
-            color_size_buttons = driver.find_elements(By.CSS_SELECTOR, "p.colorsize_selector")
-            
-            if color_size_buttons:
-                color_size_buttons[0].click()
-        
+                    for li in li_elements:
+                        try:
+                            a = li.find_element(By.TAG_NAME, "a")
+                            src = a.get_attribute("href")
+                            if src and src.startswith('http'):
+                                images.append(src)
+                        except:
+                            continue
+                            
+                except Exception as e:
+                    self.log_message(f"⚠️ 이미지 추출 실패: {str(e)}")
+                    images = []
             else:
-                self.log_message(f"⚠️ 상품 #{index+1} 색상/사이즈 버튼을 찾을 수 없습니다.")
-                return None
+                self.log_message(f"⚙️ 이미지 수집 건너뛰기 (설정)")
             
-            time.sleep(1)
-            
-            colors_ul = driver.find_element(By.CSS_SELECTOR, "ul.colorsize_list")
-            colors_li_elements = colors_ul.find_elements(By.TAG_NAME, "li")
-            
-            for li in colors_li_elements:
-                color_text = li.text.strip()
-                if color_text and 'colors' not in locals():
-                    colors = []
-                if color_text not in colors:
-                    colors.append(color_text)
-            
-            # 색상 정보 옵션 종료        
-            if color_size_buttons :
-                color_size_buttons[0].click()
-            
-            time.sleep(1)
-            
-            # 사이즈 정보 추출
-            if color_size_buttons:
-                color_size_buttons[1].click()
-                
-            sizes_ul = driver.find_element(By.CSS_SELECTOR, ".colorsize_list.js-size-list")
-            sizes_li_elements = sizes_ul.find_elements(By.TAG_NAME, "li")
-            
-            for li in sizes_li_elements:
-                size_text = li.text.strip()
-                if size_text and 'sizes' not in locals():
-                    sizes = []
-                if size_text not in sizes:
-                    sizes.append(size_text)
+            # 색상 및 사이즈 정보 추출 (설정 확인)
+            if settings['include_options']:
+                try:
+                    color_size_buttons = driver.find_elements(By.CSS_SELECTOR, "p.colorsize_selector")
                     
-            # 사이즈 정보 옵션 종료
-            if color_size_buttons:
-                color_size_buttons[1].click()
-                
-            time.sleep(1)
+                    if len(color_size_buttons) >= 1:
+                        # 색상 정보 추출
+                        try:
+                            color_size_buttons[0].click()
+                            time.sleep(1)
+                            
+                            colors_ul = driver.find_element(By.CSS_SELECTOR, "ul.colorsize_list")
+                            colors_li_elements = colors_ul.find_elements(By.TAG_NAME, "li")
+                            
+                            for li in colors_li_elements:
+                                try:
+                                    color_text = li.text.strip()
+                                    if color_text and color_text not in colors:
+                                        colors.append(color_text)
+                                except:
+                                    continue
+                            
+                            # 색상 정보 옵션 종료
+                            color_size_buttons[0].click()
+                            time.sleep(1)
+                            
+                        except Exception as e:
+                            self.log_message(f"⚠️ 색상 정보 추출 실패: {str(e)}")
+                    
+                    # 사이즈 정보 추출 (두 번째 버튼이 있는 경우에만)
+                    if len(color_size_buttons) >= 2:
+                        try:
+                            color_size_buttons[1].click()
+                            time.sleep(1)
+                            
+                            sizes_ul = driver.find_element(By.CSS_SELECTOR, ".colorsize_list.js-size-list")
+                            sizes_li_elements = sizes_ul.find_elements(By.TAG_NAME, "li")
+                            
+                            for li in sizes_li_elements:
+                                try:
+                                    size_text = li.text.strip()
+                                    if size_text and size_text not in sizes:
+                                        sizes.append(size_text)
+                                except:
+                                    continue
+                            
+                            # 사이즈 정보 옵션 종료
+                            color_size_buttons[1].click()
+                            time.sleep(1)
+                            
+                        except Exception as e:
+                            self.log_message(f"⚠️ 사이즈 정보 추출 실패: {str(e)}")
+                    else:
+                        self.log_message(f"⚠️ 사이즈 버튼을 찾을 수 없습니다.")
+                        
+                except Exception as e:
+                    self.log_message(f"⚠️ 색상/사이즈 버튼을 찾을 수 없습니다: {str(e)}")
+            else:
+                self.log_message(f"⚙️ 색상/사이즈 수집 건너뛰기 (설정)")
             
-            # 상품 설명 추출
-            description_element = driver.find_element(By.CSS_SELECTOR, "p.free_txt")
-            description_text = description_element.text.strip() if description_element else ""
+            # 상품 설명 추출 (안전장치)
+            try:
+                description_element = driver.find_element(By.CSS_SELECTOR, "p.free_txt")
+                description_text = description_element.text.strip() if description_element else ""
+            except Exception as e:
+                self.log_message(f"⚠️ 상품 설명 추출 실패: {str(e)}")
+                description_text = ""
             
-            # 카테고리 추출
-            category_element = driver.find_element(By.CSS_SELECTOR, "#s_cate dd")
-            category_text = category_element.text.strip() if category_element else ""
+            # 카테고리 추출 (안전장치)
+            try:
+                category_element = driver.find_element(By.CSS_SELECTOR, "#s_cate dd")
+                category_text = category_element.text.strip() if category_element else ""
+            except Exception as e:
+                self.log_message(f"⚠️ 카테고리 추출 실패: {str(e)}")
+                category_text = ""
             
-            return {
+            # 결과 반환
+            result = {
                 'title': title.strip(),
                 'brand': brand.strip(),
                 'price': price.strip(),
                 'url': product_url.strip(),
-                'images': images if 'images' in locals() else [],
-                'colors': colors if 'colors' in locals() else [],
-                'sizes': sizes if 'sizes' in locals() else [],
+                'images': images,
+                'colors': colors,
+                'sizes': sizes,
                 'description': description_text.strip(),
                 'category': category_text.strip(),
                 'status': '수집 완료'
             }
             
+            # 디버깅 로그 추가
+            self.log_message(f"✅ 상품 #{index+1} 데이터 추출 완료: {title[:30]}...")
+            self.log_message(f"   📊 이미지: {len(images)}장, 색상: {len(colors)}개, 사이즈: {len(sizes)}개")
+            
+            return result
+            
         except Exception as e:
-            self.log_message(f"데이터 추출 오류: {str(e)}")
-            return None
+            self.log_message(f"❌ 상품 #{index+1} 데이터 추출 오류: {str(e)}")
+            # 최소한의 정보라도 반환
+            return {
+                'title': f"상품 #{index+1}",
+                'brand': "Unknown",
+                'price': "가격 정보 없음",
+                'url': url,
+                'images': [],
+                'colors': [],
+                'sizes': [],
+                'description': "",
+                'category': "",
+                'status': '추출 실패'
+            }
+    
+    def is_duplicate_product(self, url, crawled_products):
+        """중복 상품 체크"""
+        try:
+            for product in crawled_products:
+                # URL 기준 중복 체크
+                if product['url'] == url:
+                    return True
+                    
+                # 상품명 + 브랜드 기준 중복 체크 (향후 확장 가능)
+                # if (product['title'] == title and product['brand'] == brand):
+                #     return True
+                    
+            return False
+            
+        except Exception as e:
+            self.log_message(f"중복 체크 오류: {str(e)}")
+            return False
+    
+    def get_stable_chrome_options(self):
+        """안정적인 Chrome 옵션 반환"""
+        options = Options()
+        
+        # 기본 안정성 옵션
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--window-size=1920,1080')
+        
+        # Google API 관련 오류 방지
+        options.add_argument('--disable-background-networking')
+        options.add_argument('--disable-background-timer-throttling')
+        options.add_argument('--disable-backgrounding-occluded-windows')
+        options.add_argument('--disable-renderer-backgrounding')
+        options.add_argument('--disable-features=TranslateUI,VizDisplayCompositor')
+        options.add_argument('--disable-ipc-flooding-protection')
+        
+        # 할당량 초과 방지
+        options.add_argument('--disable-component-extensions-with-background-pages')
+        options.add_argument('--disable-default-apps')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-plugins')
+        
+        # 메모리 및 성능 최적화
+        options.add_argument('--memory-pressure-off')
+        options.add_argument('--max_old_space_size=4096')
+        options.add_argument('--disable-background-mode')
+        
+        # 로그 및 디버깅 비활성화
+        options.add_argument('--no-first-run')
+        options.add_argument('--no-default-browser-check')
+        options.add_argument('--disable-logging')
+        options.add_argument('--disable-gpu-logging')
+        options.add_argument('--silent')
+        options.add_argument('--log-level=3')
+        
+        # 네트워크 안정성
+        options.add_argument('--disable-web-security')
+        options.add_argument('--disable-features=VizDisplayCompositor')
+        
+        return options
     
     def extract_detailed_info(self, driver, product_url):
         """상품 상세 정보 추출"""
@@ -3509,16 +3709,16 @@ class Main(QMainWindow):
         status_item.setForeground(QBrush(QColor("#28a745")))
         self.crawling_table.setItem(row, 6, status_item)
         
-        # 액션 버튼들 (개선된 버전)
+        # 액션 버튼들 (가로 배치로 변경)
         action_widget = QWidget()
         action_layout = QHBoxLayout(action_widget)
         action_layout.setContentsMargins(2, 2, 2, 2)
-        action_layout.setSpacing(2)
+        action_layout.setSpacing(3)
         
         # 1. 상세보기 버튼
         detail_btn = QPushButton("📋")
         detail_btn.setToolTip("상품 상세 정보 보기")
-        detail_btn.setFixedSize(30, 25)
+        detail_btn.setFixedSize(35, 28)
         detail_btn.setStyleSheet("""
             QPushButton {
                 background: #007bff;
@@ -3538,7 +3738,7 @@ class Main(QMainWindow):
         # 2. 주력상품 추가 버튼
         add_favorite_btn = QPushButton("⭐")
         add_favorite_btn.setToolTip("주력 상품으로 추가")
-        add_favorite_btn.setFixedSize(30, 25)
+        add_favorite_btn.setFixedSize(35, 28)
         add_favorite_btn.setStyleSheet("""
             QPushButton {
                 background: #f39c12;
@@ -3558,7 +3758,7 @@ class Main(QMainWindow):
         # 3. 바로 업로드 버튼
         upload_btn = QPushButton("📤")
         upload_btn.setToolTip("BUYMA에 바로 업로드")
-        upload_btn.setFixedSize(30, 25)
+        upload_btn.setFixedSize(35, 28)
         upload_btn.setStyleSheet("""
             QPushButton {
                 background: #28a745;
@@ -3578,7 +3778,7 @@ class Main(QMainWindow):
         # 4. URL 열기 버튼
         url_btn = QPushButton("🔗")
         url_btn.setToolTip("원본 상품 페이지 열기")
-        url_btn.setFixedSize(30, 25)
+        url_btn.setFixedSize(35, 28)
         url_btn.setStyleSheet("""
             QPushButton {
                 background: #6c757d;
@@ -3597,6 +3797,134 @@ class Main(QMainWindow):
         
         self.crawling_table.setCellWidget(row, 7, action_widget)
         
+        # # 행 높이를 버튼 높이에 맞춤 (개별 행 설정)
+        # self.crawling_table.setRowHeight(row, 35)
+        
+        # # 1. 상세보기 버튼
+        # detail_btn = QPushButton("📋")
+        # detail_btn.setToolTip("상품 상세 정보 보기")
+        # detail_btn.setFixedSize(35, 28)
+        # detail_btn.setStyleSheet("""
+        #     QPushButton {
+        #         background: #007bff;
+        #         color: white;
+        #         border: none;
+        #         border-radius: 4px;
+        #         font-size: 12px;
+        #         font-family: '맑은 고딕';
+        #     }
+        #     QPushButton:hover {
+        #         background: #0056b3;
+        #     }
+        # """)
+        # detail_btn.clicked.connect(lambda checked, r=row: self.show_item_detail(r))
+        # action_layout.addWidget(detail_btn)
+        
+        # # 2. 주력상품 추가 버튼
+        # add_favorite_btn = QPushButton("⭐")
+        # add_favorite_btn.setToolTip("주력 상품으로 추가")
+        # add_favorite_btn.setFixedSize(35, 28)
+        # add_favorite_btn.setStyleSheet("""
+        #     QPushButton {
+        #         background: #f39c12;
+        #         color: white;
+        #         border: none;
+        #         border-radius: 4px;
+        #         font-size: 12px;
+        #         font-family: '맑은 고딕';
+        #     }
+        #     QPushButton:hover {
+        #         background: #e67e22;
+        #     }
+        # """)
+        # add_favorite_btn.clicked.connect(lambda checked, r=row: self.add_crawled_to_favorites(r))
+        # action_layout.addWidget(add_favorite_btn)
+        
+        # # 3. 바로 업로드 버튼
+        # upload_btn = QPushButton("📤")
+        # upload_btn.setToolTip("BUYMA에 바로 업로드")
+        # upload_btn.setFixedSize(35, 28)
+        # upload_btn.setStyleSheet("""
+        #     QPushButton {
+        #         background: #28a745;
+        #         color: white;
+        #         border: none;
+        #         border-radius: 4px;
+        #         font-size: 12px;
+        #         font-family: '맑은 고딕';
+        #     }
+        #     QPushButton:hover {
+        #         background: #1e7e34;
+        #     }
+        # """)
+        # upload_btn.clicked.connect(lambda checked, r=row: self.upload_single_item(r))
+        # action_layout.addWidget(upload_btn)
+        
+        # # 4. URL 열기 버튼
+        # url_btn = QPushButton("🔗")
+        # url_btn.setToolTip("원본 상품 페이지 열기")
+        # url_btn.setFixedSize(35, 28)
+        # url_btn.setStyleSheet("""
+        #     QPushButton {
+        #         background: #6c757d;
+        #         color: white;
+        #         border: none;
+        #         border-radius: 4px;
+        #         font-size: 12px;
+        #         font-family: '맑은 고딕';
+        #     }
+        #     QPushButton:hover {
+        #         background: #5a6268;
+        #     }
+        # """)
+        # url_btn.clicked.connect(lambda checked, r=row: self.open_product_url(r))
+        # action_layout.addWidget(url_btn)
+        
+        # self.crawling_table.setCellWidget(row, 7, action_widget)
+        
+        # # 행 높이를 버튼 높이에 맞춤 (개별 행 설정)
+        # self.crawling_table.setRowHeight(row, 35)
+        
+        # # 3. 바로 업로드 버튼
+        # upload_btn = QPushButton("📤")
+        # upload_btn.setToolTip("BUYMA에 바로 업로드")
+        # upload_btn.setFixedSize(32, 22)
+        # upload_btn.setStyleSheet("""
+        #     QPushButton {
+        #         background: #28a745;
+        #         color: white;
+        #         border: none;
+        #         border-radius: 3px;
+        #         font-size: 11px;
+        #         font-family: '맑은 고딕';
+        #     }
+        #     QPushButton:hover {
+        #         background: #1e7e34;
+        #     }
+        # """)
+        # upload_btn.clicked.connect(lambda checked, r=row: self.upload_single_item(r))
+        # action_layout.addWidget(upload_btn)
+        
+        # # 4. URL 열기 버튼
+        # url_btn = QPushButton("🔗")
+        # url_btn.setToolTip("원본 상품 페이지 열기")
+        # url_btn.setFixedSize(32, 22)
+        # url_btn.setStyleSheet("""
+        #     QPushButton {
+        #         background: #6c757d;
+        #         color: white;
+        #         border: none;
+        #         border-radius: 3px;
+        #         font-size: 11px;
+        #         font-family: '맑은 고딕';
+        #     }
+        #     QPushButton:hover {
+        #         background: #5a6268;
+        #     }
+        # """)
+        # url_btn.clicked.connect(lambda checked, r=row: self.open_product_url(r))
+        # action_layout.addWidget(url_btn)
+
         # 자동 스크롤
         self.crawling_table.scrollToBottom()
     
@@ -3614,13 +3942,13 @@ class Main(QMainWindow):
             dialog.setIcon(QMessageBox.Icon.Information)
             
             detail_text = f"""
-📦 상품명: {title}
-🏷️ 브랜드: {brand}
-💰 가격: {price}
-🔗 URL: {url}
+            📦 상품명: {title}
+            🏷️ 브랜드: {brand}
+            💰 가격: {price}
+            🔗 URL: {url}
 
-※ 이미지, 색상, 사이즈 등의 상세 정보가 수집되었습니다.
-업로드 탭에서 BUYMA에 등록할 수 있습니다.
+            ※ 이미지, 색상, 사이즈 등의 상세 정보가 수집되었습니다.
+            업로드 탭에서 BUYMA에 등록할 수 있습니다.
             """
             
             dialog.setText(detail_text)
@@ -5514,15 +5842,29 @@ class Main(QMainWindow):
                 QMessageBox.critical(self, "오류", f"데이터 초기화에 실패했습니다: {str(e)}")
     
     def log_message(self, message):
-        """로그 메시지 출력"""
-        timestamp = datetime.now().strftime('%H:%M:%S')
-        formatted_message = f"[{timestamp}] {message}"
-        self.log_output.append(formatted_message)
-        self.status_label.setText(message)
-        
-        # 로그 자동 스크롤
-        scrollbar = self.log_output.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        """로그 메시지 출력 (안전장치 포함)"""
+        try:
+            timestamp = datetime.now().strftime('%H:%M:%S')
+            formatted_message = f"[{timestamp}] {message}"
+            
+            # log_output이 존재하는지 확인
+            if hasattr(self, 'log_output') and self.log_output is not None:
+                self.log_output.append(formatted_message)
+                
+                # 로그 자동 스크롤
+                scrollbar = self.log_output.verticalScrollBar()
+                scrollbar.setValue(scrollbar.maximum())
+            else:
+                # UI가 아직 준비되지 않은 경우 콘솔에 출력
+                print(formatted_message)
+            
+            # status_label이 존재하는지 확인
+            if hasattr(self, 'status_label') and self.status_label is not None:
+                self.status_label.setText(message)
+                
+        except Exception as e:
+            # 로그 출력 중 오류가 발생해도 프로그램이 중단되지 않도록
+            print(f"로그 출력 오류: {e} - 메시지: {message}")
     
     def closeEvent(self, event):
         """프로그램 종료 시 설정 저장 및 타이머 정리"""
@@ -5931,13 +6273,21 @@ class Main(QMainWindow):
             self.log_message(f"자동 저장 오류: {str(e)}")
     
     def load_favorite_products_on_startup(self):
-        """프로그램 시작 시 자동 로드"""
+        """프로그램 시작 시 자동 로드 (안전장치 포함)"""
         try:
             if os.path.exists(self.favorites_file):
                 with open(self.favorites_file, 'r', encoding='utf-8') as f:
                     self.favorite_products = json.load(f)
-                self.update_favorite_table()
+                
+                # 테이블 업데이트 (테이블이 존재하는 경우에만)
+                if hasattr(self, 'favorite_table') and self.favorite_table is not None:
+                    self.update_favorite_table()
+                
                 self.log_message(f"📂 주력 상품 자동 로드: {len(self.favorite_products)}개")
+            else:
+                self.favorite_products = []
+                self.log_message("📂 주력 상품 파일이 없습니다. 새로 시작합니다.")
+                
         except Exception as e:
             self.log_message(f"자동 로드 오류: {str(e)}")
             self.favorite_products = []
@@ -5992,13 +6342,26 @@ class Main(QMainWindow):
             row = self.crawling_table.rowCount()
             self.crawling_table.insertRow(row)
             
-            # 데이터 설정
+            # 이미지 수 계산
+            images = item_data.get('images', [])
+            image_count = len(images) if images else 0
+            
+            # 색상/사이즈 정보 포맷팅
+            colors = item_data.get('colors', [])
+            sizes = item_data.get('sizes', [])
+            
+            if colors or sizes:
+                colors_sizes_text = f"색상:{len(colors)}개, 사이즈:{len(sizes)}개"
+            else:
+                colors_sizes_text = "정보 없음"
+            
+            # 데이터 설정 (올바른 키 사용)
             items = [
                 item_data.get('title', 'Unknown'),
                 item_data.get('brand', 'Unknown'),
                 item_data.get('price', 'N/A'),
-                str(item_data.get('image_count', 0)),
-                item_data.get('colors_sizes', 'N/A'),
+                f"{image_count}장",  # 이미지 수 올바르게 계산
+                colors_sizes_text,   # 색상/사이즈 올바르게 포맷팅
                 item_data.get('url', 'N/A'),
                 item_data.get('status', '완료')
             ]
@@ -6024,16 +6387,20 @@ class Main(QMainWindow):
                 font.setFamily("맑은 고딕")
                 status_item.setFont(font)
             
-            # 액션 버튼들 (개선된 버전)
+            # 디버깅 로그 추가
+            self.log_message(f"📊 테이블 추가: {item_data.get('title', 'Unknown')[:20]}... "
+                           f"(이미지:{image_count}장, 색상:{len(colors)}개, 사이즈:{len(sizes)}개)")
+            
+            # 액션 버튼들 (가로 배치)
             action_widget = QWidget()
             action_layout = QHBoxLayout(action_widget)
             action_layout.setContentsMargins(2, 2, 2, 2)
-            action_layout.setSpacing(2)
+            action_layout.setSpacing(3)
             
             # 1. 상세보기 버튼
             detail_btn = QPushButton("📋")
             detail_btn.setToolTip("상품 상세 정보 보기")
-            detail_btn.setFixedSize(30, 25)
+            detail_btn.setFixedSize(35, 28)
             detail_btn.setStyleSheet("""
                 QPushButton {
                     background: #007bff;
@@ -6053,7 +6420,7 @@ class Main(QMainWindow):
             # 2. 주력상품 추가 버튼
             add_favorite_btn = QPushButton("⭐")
             add_favorite_btn.setToolTip("주력 상품으로 추가")
-            add_favorite_btn.setFixedSize(30, 25)
+            add_favorite_btn.setFixedSize(35, 28)
             add_favorite_btn.setStyleSheet("""
                 QPushButton {
                     background: #f39c12;
@@ -6073,7 +6440,7 @@ class Main(QMainWindow):
             # 3. 바로 업로드 버튼
             upload_btn = QPushButton("📤")
             upload_btn.setToolTip("BUYMA에 바로 업로드")
-            upload_btn.setFixedSize(30, 25)
+            upload_btn.setFixedSize(35, 28)
             upload_btn.setStyleSheet("""
                 QPushButton {
                     background: #28a745;
@@ -6093,7 +6460,7 @@ class Main(QMainWindow):
             # 4. URL 열기 버튼
             url_btn = QPushButton("🔗")
             url_btn.setToolTip("원본 상품 페이지 열기")
-            url_btn.setFixedSize(30, 25)
+            url_btn.setFixedSize(35, 28)
             url_btn.setStyleSheet("""
                 QPushButton {
                     background: #6c757d;
@@ -6111,6 +6478,9 @@ class Main(QMainWindow):
             action_layout.addWidget(url_btn)
             
             self.crawling_table.setCellWidget(row, 7, action_widget)
+            
+            # 행 높이를 버튼 높이에 맞춤
+            self.crawling_table.setRowHeight(row, 35)
             
             # 자동 스크롤
             self.crawling_table.scrollToBottom()
