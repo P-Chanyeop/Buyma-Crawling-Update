@@ -1606,7 +1606,7 @@ class Main(QMainWindow):
         """)
         self.load_my_products_btn.clicked.connect(self.load_my_products)
         
-        self.analyze_price_btn = QPushButton("🔍 가격 분석 시작")
+        self.analyze_price_btn = QPushButton("🔍 가격분석 & 가격수정 시작")
         self.analyze_price_btn.setMinimumHeight(45)
         self.analyze_price_btn.setStyleSheet("""
             QPushButton {
@@ -1638,24 +1638,6 @@ class Main(QMainWindow):
         """)
         self.auto_update_all_btn.clicked.connect(self.auto_update_all_prices)
         
-        # 새로운 기능: 내 상품 전체 분석 버튼
-        self.analyze_all_my_products_btn = QPushButton("🔍 내 상품 전체 분석 & 수정")
-        self.analyze_all_my_products_btn.setMinimumHeight(45)
-        self.analyze_all_my_products_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #17a2b8, stop:1 #138496);
-                font-size: 13px;
-                font-weight: bold;
-                font-family: '맑은 고딕';
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #138496, stop:1 #0f6674);
-            }
-        """)
-        self.analyze_all_my_products_btn.clicked.connect(self.analyze_all_my_products)
-        
         self.load_json_btn = QPushButton("📁 JSON 파일 불러오기")
         self.load_json_btn.setMinimumHeight(45)
         self.load_json_btn.setStyleSheet("""
@@ -1675,7 +1657,6 @@ class Main(QMainWindow):
         price_control_layout.addWidget(self.load_my_products_btn)
         price_control_layout.addWidget(self.load_json_btn)
         price_control_layout.addWidget(self.analyze_price_btn)
-        price_control_layout.addWidget(self.analyze_all_my_products_btn)
         
         layout.addLayout(price_control_layout)
         
@@ -9359,9 +9340,9 @@ class Main(QMainWindow):
     def price_analysis_finished(self, stats):
         """가격 분석 완료 처리"""
         try:
-            # UI 상태 복원
-            self.analyze_all_my_products_btn.setEnabled(True)
-            self.analyze_all_my_products_btn.setText("🔍 내 상품 전체 분석 & 수정")
+            # UI 상태 복원 (더 이상 사용하지 않는 버튼 제거됨)
+            # self.analyze_all_my_products_btn.setEnabled(True)
+            # self.analyze_all_my_products_btn.setText("🔍 내 상품 전체 분석 & 수정")
             self.stop_price_analysis_btn.setEnabled(False)
             
             # 통계 업데이트
@@ -9486,9 +9467,9 @@ class Main(QMainWindow):
                 self.price_analysis_worker.stop()
                 self.price_analysis_worker.wait(3000)  # 3초 대기
                 
-                # UI 상태 복원
-                self.analyze_all_my_products_btn.setEnabled(True)
-                self.analyze_all_my_products_btn.setText("🔍 내 상품 전체 분석 & 수정")
+                # UI 상태 복원 (더 이상 사용하지 않는 버튼 제거됨)
+                # self.analyze_all_my_products_btn.setEnabled(True)
+                # self.analyze_all_my_products_btn.setText("🔍 내 상품 전체 분석 & 수정")
                 self.stop_price_analysis_btn.setEnabled(False)
                 
                 self.log_message("⏹️ 가격 분석이 사용자에 의해 중지되었습니다.")
