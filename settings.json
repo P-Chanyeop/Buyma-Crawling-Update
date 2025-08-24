@@ -1,7 +1,8 @@
 {
   "email": "ourshimizu@gmail.com",
+  "password": "dmxmcW5zMTIzIQ==",
   "browser": "Chrome",
-  "timeout": 10,
+  "timeout": 5,
   "retry_count": 3,
   "crawl_count": 50,
   "delay_time": 3,
