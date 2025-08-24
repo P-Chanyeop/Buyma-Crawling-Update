@@ -474,3 +474,24 @@ Traceback (most recent call last):
     if option.state & option.State.Selected:
 AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
 
+
+[2025-08-24 22:51:29.353367] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 5068, in analyze_my_products_prices
+    self.switch_to_monitoring_tab()
+AttributeError: 'Main' object has no attribute 'switch_to_monitoring_tab'
+
+
+[2025-08-24 22:51:38.002094] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 5068, in analyze_my_products_prices
+    self.switch_to_monitoring_tab()
+AttributeError: 'Main' object has no attribute 'switch_to_monitoring_tab'
+
+
+[2025-08-25 00:05:49.293177] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 5209, in analyze_my_products_prices
+    is_auto_mode = self.price_mode_auto.isChecked()
+AttributeError: 'Main' object has no attribute 'price_mode_auto'
+
