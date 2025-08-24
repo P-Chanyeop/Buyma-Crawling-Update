@@ -1646,7 +1646,24 @@ class Main(QMainWindow):
         """)
         self.analyze_all_my_products_btn.clicked.connect(self.analyze_all_my_products)
         
+        self.load_json_btn = QPushButton("📁 JSON 파일 불러오기")
+        self.load_json_btn.setMinimumHeight(45)
+        self.load_json_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #6c757d, stop:1 #495057);
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #495057, stop:1 #343a40);
+            }
+        """)
+        self.load_json_btn.clicked.connect(self.load_products_from_json)
+        
         price_control_layout.addWidget(self.load_my_products_btn)
+        price_control_layout.addWidget(self.load_json_btn)
         price_control_layout.addWidget(self.analyze_price_btn)
         price_control_layout.addWidget(self.analyze_all_my_products_btn)
         
@@ -1657,9 +1674,9 @@ class Main(QMainWindow):
         result_layout = QVBoxLayout(result_group)
         
         self.price_table = QTableWidget()
-        self.price_table.setColumnCount(8)
+        self.price_table.setColumnCount(7)
         self.price_table.setHorizontalHeaderLabels([
-            "상품명", "현재가격", "최저가", "제안가", "마진", "상태", "브랜드", "액션"
+            "상품명", "현재가격", "최저가", "제안가", "마진", "상태", "액션"
         ])
         
         # 테이블 스타일 설정
@@ -1676,20 +1693,39 @@ class Main(QMainWindow):
                 border: 1px solid #ddd;
                 font-weight: bold;
             }
+            QTableWidget::item {
+                padding: 5px;
+                border: none;
+                text-align: left;
+            }
         """)
         
         self.price_table.setAlternatingRowColors(True)
         self.price_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.price_table.horizontalHeader().setStretchLastSection(True)
         
+        # 텍스트 래핑 비활성화 - 한 줄로 표시
+        self.price_table.setWordWrap(False)
+        
+        # 텍스트 엘라이드 모드 설정 - 오른쪽 끝에서만 ...
+        self.price_table.setTextElideMode(Qt.TextElideMode.ElideRight)
+        
+        # 헤더의 텍스트 엘라이드 모드도 설정
+        header = self.price_table.horizontalHeader()
+        header.setTextElideMode(Qt.TextElideMode.ElideRight)
+        
+        # 커스텀 델리게이트 대신 간단한 방법 사용
+        # 상품명 컬럼의 리사이즈 모드를 Interactive로 설정
+        header.setSectionResizeMode(0, header.ResizeMode.Interactive)
+        
         # 컬럼 너비 설정
-        self.price_table.setColumnWidth(0, 200)  # 상품명
+        self.price_table.setColumnWidth(0, 500)  # 상품명 (더 넓게)
         self.price_table.setColumnWidth(1, 100)  # 현재가격
         self.price_table.setColumnWidth(2, 100)  # 최저가
         self.price_table.setColumnWidth(3, 100)  # 제안가
         self.price_table.setColumnWidth(4, 100)  # 마진
         self.price_table.setColumnWidth(5, 120)  # 상태
-        self.price_table.setColumnWidth(6, 120)  # 브랜드
+        self.price_table.setColumnWidth(6, 80)   # 액션
         
         result_layout.addWidget(self.price_table)
         layout.addWidget(result_group)
@@ -3101,7 +3137,7 @@ class Main(QMainWindow):
                 import time
                 time.sleep(5)
             
-            self.log_message("❌ 네트워크 연결 복구 실패")
+            self.log_error("❌ 네트워크 연결 복구 실패")
             return False
             
         except Exception as e:
@@ -3123,7 +3159,7 @@ class Main(QMainWindow):
                 return False
                 
         except Exception as e:
-            self.log_message(f"❌ BUYMA 사이트 접근 불가: {str(e)}")
+            self.log_error(f"❌ BUYMA 사이트 접근 불가: {str(e)}")
             return False
     
     def create_backup(self):
@@ -3321,7 +3357,7 @@ class Main(QMainWindow):
                     continue
             
             if not product_elements:
-                self.log_message("❌ 상품 요소를 찾을 수 없습니다. 페이지 구조를 확인해주세요.")
+                self.log_error("❌ 상품 요소를 찾을 수 없습니다. 페이지 구조를 확인해주세요.")
                 self.crawling_finished_signal.emit()
                 return
             
@@ -3644,7 +3680,7 @@ class Main(QMainWindow):
                     break
                     
                 except Exception as e:
-                    self.log_message(f"⚠️ 브라우저 초기화 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
+                    self.log_error(f"⚠️ 브라우저 초기화 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
                     
                     # 이전 시도에서 생성된 프로세스 정리
                     try:
@@ -3665,7 +3701,7 @@ class Main(QMainWindow):
                             pass
                     
                     if attempt == max_retries - 1:
-                        self.log_message("❌ 브라우저 초기화 최종 실패")
+                        self.log_error("❌ 브라우저 초기화 최종 실패")
                         self.crawling_status_signal.emit("브라우저 초기화 실패")
                         self.crawling_finished_signal.emit()
                         return
@@ -4169,7 +4205,7 @@ class Main(QMainWindow):
                     self.log_message(f"✅ 브라우저 초기화 성공 (시도 {attempt + 1}/{max_retries})")
                     break
                 except Exception as e:
-                    self.log_message(f"⚠️ 브라우저 초기화 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
+                    self.log_error(f"⚠️ 브라우저 초기화 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
                     if attempt == max_retries - 1:
                         self.login_failed_signal.emit("브라우저 초기화 실패")
                         return
@@ -4263,7 +4299,7 @@ class Main(QMainWindow):
                 self.login_failed_signal.emit("로그인 실패: 이메일 또는 비밀번호를 확인해주세요.")
                 
         except Exception as e:
-            self.log_message(f"❌ 로그인 오류: {str(e)}")
+            self.log_error(f"❌ 로그인 오류: {str(e)}")
             self.login_failed_signal.emit(f"로그인 오류: {str(e)}")
     
     def on_login_success(self):
@@ -4687,18 +4723,38 @@ class Main(QMainWindow):
         self.load_products_thread.start()
     
     def crawl_my_products(self):
-        """내 상품 크롤링 실행"""
+        """내 상품 크롤링 실행 - JSON 파일로 저장"""
         try:
             if not self.shared_driver:
-                self.log_message("❌ 브라우저가 초기화되지 않았습니다.")
+                self.log_error("❌ 브라우저가 초기화되지 않았습니다.")
                 return
             
+            # JSON 파일명 생성 (상품정보_수집날짜_수집시간.json)
+            from datetime import datetime
+            now = datetime.now()
+            date_str = now.strftime("%Y%m%d")
+            time_str = now.strftime("%H%M%S")
+            json_filename = f"상품정보_{date_str}_{time_str}.json"
+            
+            self.log_message(f"📁 상품 정보를 {json_filename} 파일로 저장합니다.")
+            
             page_number = 1
-            my_products = []
+            total_products = 0
+            
+            # JSON 파일 초기화
+            json_data = {
+                "수집_정보": {
+                    "수집_날짜": now.strftime("%Y-%m-%d"),
+                    "수집_시간": now.strftime("%H:%M:%S"),
+                    "총_상품수": 0
+                },
+                "상품_목록": []
+            }
+            
             while True:
                 # 내 상품 페이지로 이동
                 my_products_url = f"https://www.buyma.com/my/sell?duty_kind=all&facet=brand_id%2Ccate_pivot%2Cstatus%2Ctag_ids%2Cshop_labels%2Cstock_state&order=desc&page={page_number}&rows=100&sale_kind=all&sort=item_id&status=for_sale&timesale_kind=all#/"
-                self.log_message(f"🌐 내 상품 페이지 접속: {my_products_url}")
+                self.log_message(f"🌐 내 상품 페이지 {page_number} 접속 중...")
                 
                 self.shared_driver.get(my_products_url)
                 time.sleep(3)
@@ -4715,21 +4771,22 @@ class Main(QMainWindow):
                         EC.presence_of_element_located((By.CSS_SELECTOR, "tr.cursor_pointer.js-checkbox-check-row"))
                     )
                     
-                    # 총 상품 개수 수집
-                    try:
-                        total_count_elem = self.shared_driver.find_element(By.CSS_SELECTOR, "p.itemedit_actions_nums")
-                        total_count_text = total_count_elem.text.strip()
-                        import re
-                        # 1～100件(全 2962件) 형식에서 2962 추출
-                        match = re.search(r'全\s*([\d,]+)件', total_count_text)
-                        if match:
-                            total_count = match.group(1).replace(',', '')
-                            self.log_message(f"📊 총 판매 중인 상품 수: {total_count}개")
-                            
-                        else:
-                            self.log_message("⚠️ 총 상품 수를 추출하지 못했습니다.")
-                    except Exception as e:
-                        self.log_message(f"⚠️ 총 상품 수 추출 실패: {str(e)}")
+                    # 총 상품 개수 수집 (첫 페이지에서만)
+                    if page_number == 1:
+                        try:
+                            total_count_elem = self.shared_driver.find_element(By.CSS_SELECTOR, "p.itemedit_actions_nums")
+                            total_count_text = total_count_elem.text.strip()
+                            import re
+                            # 1～100件(全 2962件) 형식에서 2962 추출
+                            match = re.search(r'全\s*([\d,]+)件', total_count_text)
+                            if match:
+                                total_count = match.group(1).replace(',', '')
+                                self.log_message(f"📊 총 판매 중인 상품 수: {total_count}개")
+                                
+                            else:
+                                self.log_message("⚠️ 총 상품 수를 추출하지 못했습니다.")
+                        except Exception as e:
+                            self.log_message(f"⚠️ 총 상품 수 추출 실패: {str(e)}")
                     
                     # 상품 요소들 수집
                     product_elements = self.shared_driver.find_elements(By.CSS_SELECTOR, "tr.cursor_pointer.js-checkbox-check-row")
@@ -4751,7 +4808,7 @@ class Main(QMainWindow):
                             title = title_elem.text.strip()
                             
                             # 가격 추출
-                            price_elem = element.find_element(By.CSS_SELECTOR, "js-item-price-display")
+                            price_elem = element.find_element(By.CSS_SELECTOR, "span.js-item-price-display")
                             price_text = price_elem.text.strip()
                             
                             # 브랜드 추출 (선택사항)
@@ -4776,8 +4833,24 @@ class Main(QMainWindow):
                                 'status': '분석 대기'
                             }
                             
-                            my_products.append(product_data)
-                            self.log_message(f"📦 상품 {i+1}: {title}... - {price_text}")
+                            # JSON 데이터에 추가 (메모리 절약)
+                            json_data["상품_목록"].append(product_data)
+                            total_products += 1
+                            
+                            # 진행 상황 로그 (10개마다)
+                            if total_products % 10 == 0:
+                                self.log_message(f"📦 진행 상황: {total_products}개 상품 수집 완료")
+                            else:
+                                self.log_message(f"📦 상품 {total_products}: {title[:30]}... - {price_text}")
+                            
+                            # 중간 저장 (50개마다 메모리 절약)
+                            if total_products % 50 == 0:
+                                try:
+                                    with open(json_filename, 'w', encoding='utf-8') as f:
+                                        json.dump(json_data, f, ensure_ascii=False, indent=2)
+                                    self.log_message(f"💾 중간 저장 완료: {total_products}개 상품")
+                                except Exception as e:
+                                    self.log_error(f"❌ 중간 저장 실패: {str(e)}")
                             
                         except Exception as e:
                             self.log_message(f"⚠️ 상품 {i+1} 정보 추출 실패: {str(e)}")
@@ -4798,12 +4871,68 @@ class Main(QMainWindow):
                 except Exception as e:
                     self.log_message(f"❌ 상품 목록 크롤링 실패: {str(e)}")
                     
-            # UI 테이블에 결과 표시
-            self.display_my_products(my_products)
-            self.log_message(f"🎉 내 상품 {len(my_products)}개 불러오기 완료!")
+                    continue
+                    
+                    
+            # 최종 JSON 저장
+            try:
+                json_data["수집_정보"]["총_상품수"] = total_products
+                with open(json_filename, 'w', encoding='utf-8') as f:
+                    json.dump(json_data, f, ensure_ascii=False, indent=2)
+                self.log_message(f"💾 최종 저장 완료: {json_filename}")
+            except Exception as e:
+                self.log_error(f"❌ 최종 저장 실패: {str(e)}")
+                    
+            # UI 테이블에 결과 표시 (최근 100개만)
+            display_products = json_data["상품_목록"][-100:] if len(json_data["상품_목록"]) > 100 else json_data["상품_목록"]
+            self.display_my_products(display_products)
+            self.log_message(f"🎉 내 상품 {total_products}개 수집 완료! (테이블에는 최근 {len(display_products)}개 표시)")
                 
         except Exception as e:
             self.log_message(f"❌ 내 상품 불러오기 오류: {str(e)}")
+    
+    def load_products_from_json(self):
+        """JSON 파일에서 상품 정보 불러오기"""
+        try:
+            from PyQt6.QtWidgets import QFileDialog
+            
+            # JSON 파일 선택
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, 
+                "상품 정보 JSON 파일 선택", 
+                "", 
+                "JSON Files (*.json);;All Files (*)"
+            )
+            
+            if not file_path:
+                return
+            
+            # JSON 파일 읽기
+            with open(file_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+            
+            products = json_data.get("상품_목록", [])
+            if not products:
+                QMessageBox.warning(self, "경고", "JSON 파일에 상품 정보가 없습니다.")
+                return
+            
+            # 테이블에 표시 (최근 100개만)
+            display_products = products[-100:] if len(products) > 100 else products
+            self.display_my_products(display_products)
+            
+            # 수집 정보 표시
+            collect_info = json_data.get("수집_정보", {})
+            collect_date = collect_info.get("수집_날짜", "알 수 없음")
+            collect_time = collect_info.get("수집_시간", "알 수 없음")
+            total_count = collect_info.get("총_상품수", len(products))
+            
+            self.log_message(f"📁 JSON 파일 불러오기 완료!")
+            self.log_message(f"📅 수집일시: {collect_date} {collect_time}")
+            self.log_message(f"📊 총 상품수: {total_count}개 (테이블에는 최근 {len(display_products)}개 표시)")
+            
+        except Exception as e:
+            self.log_error(f"❌ JSON 파일 불러오기 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"JSON 파일 불러오기 실패:\n{str(e)}")
     
     def display_my_products(self, products):
         """내 상품을 테이블에 표시"""
@@ -4811,8 +4940,16 @@ class Main(QMainWindow):
             self.price_table.setRowCount(len(products))
             
             for row, product in enumerate(products):
+                # 행 높이 설정 (한 줄 텍스트에 맞게)
+                self.price_table.setRowHeight(row, 50)
+                
                 # 상품명
-                self.price_table.setItem(row, 0, QTableWidgetItem(product['title']))
+                title_item = QTableWidgetItem(product['title'])
+                title_item.setToolTip(product['title'])  # 전체 텍스트를 툴팁으로 표시
+                # 텍스트 엘라이드 비활성화 - 전체 텍스트 표시
+                title_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                title_item.setFlags(title_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.price_table.setItem(row, 0, title_item)
                 
                 # 현재가격
                 self.price_table.setItem(row, 1, QTableWidgetItem(product['current_price']))
@@ -4829,34 +4966,75 @@ class Main(QMainWindow):
                 # 상태
                 self.price_table.setItem(row, 5, QTableWidgetItem(product['status']))
                 
-                # 브랜드
-                self.price_table.setItem(row, 6, QTableWidgetItem(product['brand']))
-                
                 # 액션 버튼
                 action_widget = QWidget()
                 action_layout = QHBoxLayout(action_widget)
-                action_layout.setContentsMargins(5, 2, 5, 2)
+                action_layout.setContentsMargins(2, 2, 2, 2)
+                action_layout.setSpacing(3)
                 
-                analyze_btn = QPushButton("🔍 분석")
-                analyze_btn.setMaximumWidth(60)
-                analyze_btn.setStyleSheet("font-size: 10px; padding: 2px;")
+                analyze_btn = QPushButton("🔍")
+                analyze_btn.setFixedSize(30, 25)
+                analyze_btn.setToolTip("가격 분석")
+                analyze_btn.setStyleSheet("""
+                    QPushButton {
+                        font-size: 11px; 
+                        background-color: #007bff;
+                        color: white;
+                        border: 1px solid #0056b3;
+                        border-radius: 4px;
+                        padding: 2px;
+                    }
+                    QPushButton:hover {
+                        background-color: #0056b3;
+                    }
+                    QPushButton:pressed {
+                        background-color: #004085;
+                    }
+                """)
                 analyze_btn.clicked.connect(lambda checked, r=row: self.analyze_single_product(r))
                 
-                update_btn = QPushButton("💰 수정")
-                update_btn.setMaximumWidth(60)
-                update_btn.setStyleSheet("font-size: 10px; padding: 2px;")
+                update_btn = QPushButton("💰")
+                update_btn.setFixedSize(30, 25)
+                update_btn.setToolTip("가격 수정")
+                update_btn.setStyleSheet("""
+                    QPushButton {
+                        font-size: 11px; 
+                        background-color: #28a745;
+                        color: white;
+                        border: 1px solid #1e7e34;
+                        border-radius: 4px;
+                        padding: 2px;
+                    }
+                    QPushButton:hover {
+                        background-color: #1e7e34;
+                    }
+                    QPushButton:pressed {
+                        background-color: #155724;
+                    }
+                """)
                 update_btn.clicked.connect(lambda checked, r=row: self.update_single_product_price(r))
                 
                 action_layout.addWidget(analyze_btn)
                 action_layout.addWidget(update_btn)
+                action_layout.addStretch()
                 
-                self.price_table.setCellWidget(row, 7, action_widget)
+                self.price_table.setCellWidget(row, 6, action_widget)
                 
         except Exception as e:
             self.log_message(f"❌ 테이블 표시 오류: {str(e)}")
     
     def analyze_my_products_prices(self):
         """내 상품들의 가격 분석 시작"""
+        # 로그인 상태 확인
+        if not hasattr(self, 'is_logged_in') or not self.is_logged_in:
+            QMessageBox.warning(
+                self, 
+                "로그인 필요", 
+                "가격 분석을 위해서는 먼저 BUYMA 로그인이 필요합니다.\n\n"
+                "설정 탭에서 '🔐 BUYMA 로그인' 버튼을 클릭하여 로그인해주세요."
+            )
+            return
+        
         if self.price_table.rowCount() == 0:
             QMessageBox.warning(self, "경고", "먼저 '내 상품 불러오기'를 실행해주세요.")
             return
@@ -4898,10 +5076,10 @@ class Main(QMainWindow):
                         # 제안가 계산 (최저가 - 할인금액)
                         suggested_price = max(lowest_price - discount, 0)
                         
-                        # 현재가격에서 숫자만 추출
+                        # 현재가격에서 숫자만 추출 (¥31,100 → 31100)
                         import re
-                        current_price_numbers = re.findall(r'\d+', current_price_text.replace(',', ''))
-                        current_price = int(''.join(current_price_numbers)) if current_price_numbers else 0
+                        current_price_numbers = re.findall(r'[\d,]+', current_price_text)
+                        current_price = int(current_price_numbers[0].replace(',', '')) if current_price_numbers else 0
                         
                         # 마진 계산
                         margin = suggested_price - current_price if current_price > 0 else 0
@@ -4955,41 +5133,125 @@ class Main(QMainWindow):
     def search_buyma_lowest_price(self, product_name):
         """BUYMA에서 상품 검색하여 최저가 찾기"""
         try:
+            # 1. 상품명에서 실제 검색어 추출 (商品ID 이전까지)
+            search_name = product_name
+            if "商品ID" in product_name:
+                search_name = product_name.split("商品ID")[0].strip()
+            
+            # 추가 정리 (줄바꿈, 특수문자 제거)
+            search_name = search_name.replace("\n", " ").strip()
+            
+            self.log_message(f"🔍 검색어: '{search_name}'")
+            
             if not self.shared_driver:
+                self.log_error("❌ 브라우저가 초기화되지 않았습니다.")
                 return None
             
-            # BUYMA 검색 페이지로 이동
-            search_url = f"https://www.buyma.com/search/?q={product_name}"
-            self.shared_driver.get(search_url)
-            time.sleep(2)
+            # 2. BUYMA 검색 URL로 이동 (첫 페이지)
+            page_number = 1
+            lowest_price = float('inf')
+            found_products = 0
             
-            # 가격 요소들 찾기
-            from selenium.webdriver.common.by import By
-            
-            price_elements = self.shared_driver.find_elements(By.CSS_SELECTOR, ".price, [class*='price']")
-            
-            prices = []
-            for elem in price_elements[:10]:  # 상위 10개만 확인
+            while True:
+                search_url = f"https://www.buyma.com/r/-R120/{search_name}_{page_number}"
+                self.log_message(f"🌐 페이지 {page_number} 접속: {search_url}")
+                
+                self.shared_driver.get(search_url)
+                time.sleep(3)
+                
+                # 3. ul.product_lists 요소 로딩 대기
+                from selenium.webdriver.common.by import By
+                from selenium.webdriver.support.ui import WebDriverWait
+                from selenium.webdriver.support import expected_conditions as EC
+                
                 try:
-                    price_text = elem.text.strip()
-                    # 숫자만 추출
-                    import re
-                    numbers = re.findall(r'\d+', price_text.replace(',', ''))
-                    if numbers:
-                        price = int(''.join(numbers))
-                        if price > 100:  # 100엔 이상만 유효한 가격으로 간주
-                            prices.append(price)
-                except:
+                    # 상품 리스트 로딩 대기 (최대 10초)
+                    product_list = WebDriverWait(self.shared_driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "ul.product_lists"))
+                    )
+                    
+                    # 4. 각 li 요소들 (상품들) 수집
+                    product_items = product_list.find_elements(By.TAG_NAME, "li")
+                    
+                    if not product_items:
+                        self.log_message(f"⚠️ 페이지 {page_number}에서 상품을 찾을 수 없습니다.")
+                        break
+                    
+                    self.log_message(f"📦 페이지 {page_number}에서 {len(product_items)}개 상품 발견")
+                    
+                    # 5. 각 상품 정보 분석
+                    for item in product_items:
+                        try:
+                            # 6. 상품명 추출 (div.product_name)
+                            name_elem = item.find_element(By.CSS_SELECTOR, "div.product_name")
+                            item_name = name_elem.text.strip()
+                            
+                            # 7. 검색한 상품명이 포함되어 있는지 확인
+                            if search_name.lower() in item_name.lower():
+                                # 5. 상품가격 추출 (span.Price_Txt)
+                                try:
+                                    price_elem = item.find_element(By.CSS_SELECTOR, "span.Price_Txt")
+                                    price_text = price_elem.text.strip()
+                                    
+                                    # 가격에서 숫자만 추출 (¥12,000 → 12000)
+                                    import re
+                                    price_numbers = re.findall(r'[\d,]+', price_text)
+                                    if price_numbers:
+                                        price = int(price_numbers[0].replace(',', ''))
+                                        
+                                        # 7. 최저가 비교 및 갱신
+                                        if price < lowest_price:
+                                            lowest_price = price
+                                            self.log_message(f"💰 새로운 최저가 발견: ¥{price:,} - {item_name[:30]}...")
+                                        
+                                        found_products += 1
+                                    
+                                except Exception as e:
+                                    # 가격 정보가 없는 상품은 건너뛰기
+                                    continue
+                            
+                        except Exception as e:
+                            # 개별 상품 처리 오류는 건너뛰기
+                            continue
+                    
+                    # 4. 다음 페이지 확인 (li 개수가 120개면 다음 페이지 있음)
+                    if len(product_items) >= 120:
+                        page_number += 1
+                        self.log_message(f"➡️ 다음 페이지({page_number})로 이동...")
+                        time.sleep(2)  # 페이지 간 딜레이
+                    else:
+                        # 마지막 페이지 도달
+                        self.log_message(f"✅ 모든 페이지 검색 완료 (총 {page_number} 페이지)")
+                        break
+                
+                except Exception as e:
+                    self.log_error(f"❌ 페이지 {page_number} 로딩 실패: {str(e)}")
                     continue
             
-            return min(prices) if prices else None
-            
+            # 8. 결과 반환
+            if lowest_price != float('inf'):
+                self.log_message(f"🎉 검색 완료: 총 {found_products}개 상품 중 최저가 ¥{lowest_price:,}")
+                return lowest_price
+            else:
+                self.log_message(f"⚠️ '{search_name}' 상품을 찾을 수 없습니다.")
+                return None
+                
         except Exception as e:
-            self.log_message(f"⚠️ BUYMA 검색 오류: {str(e)}")
+            self.log_error(f"❌ 가격 검색 오류: {str(e)}")
             return None
     
     def analyze_all_my_products(self):
         """내 상품 전체 분석 & 자동 수정"""
+        # 로그인 상태 확인
+        if not hasattr(self, 'is_logged_in') or not self.is_logged_in:
+            QMessageBox.warning(
+                self, 
+                "로그인 필요", 
+                "가격 분석을 위해서는 먼저 BUYMA 로그인이 필요합니다.\n\n"
+                "설정 탭에서 '🔐 BUYMA 로그인' 버튼을 클릭하여 로그인해주세요."
+            )
+            return
+            
         if not self.check_login_required():
             return
         
@@ -5004,6 +5266,15 @@ class Main(QMainWindow):
     def analyze_single_product(self, row):
         """단일 상품 분석"""
         try:
+            # 로그인 상태 확인
+            if not hasattr(self, 'is_logged_in') or not self.is_logged_in:
+                QMessageBox.warning(
+                    self, 
+                    "로그인 필요", 
+                    "가격 분석을 위해서는 먼저 BUYMA 로그인이 필요합니다.\n\n"
+                    "설정 탭에서 '🔐 BUYMA 로그인' 버튼을 클릭하여 로그인해주세요."
+                )
+                return
             product_name = self.price_table.item(row, 0).text()
             self.log_message(f"🔍 단일 상품 분석: {product_name[:30]}...")
             
@@ -7396,13 +7667,13 @@ class Main(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "오류", f"데이터 초기화에 실패했습니다: {str(e)}")
     
-    def log_message(self, message):
+    def log_message(self, message, show_in_status=True):
         """로그 메시지 출력 (자동 스크롤 포함)"""
         try:
             timestamp = datetime.now().strftime('%H:%M:%S')
             formatted_message = f"[{timestamp}] {message}"
             
-            # log_output이 존재하는지 확인
+            # log_output이 존재하는지 확인 (모니터링 로그창 - 모든 메시지 표시)
             if hasattr(self, 'log_output') and self.log_output is not None:
                 # 로그 메시지 추가
                 self.log_output.append(formatted_message)
@@ -7427,13 +7698,26 @@ class Main(QMainWindow):
                 # UI가 아직 준비되지 않은 경우 콘솔에 출력
                 print(formatted_message)
             
-            # status_label이 존재하는지 확인
-            if hasattr(self, 'status_label') and self.status_label is not None:
-                self.status_label.setText(message)
+            # 상태바 업데이트 (예외 메시지는 제외)
+            if show_in_status and hasattr(self, 'status_label') and self.status_label is not None:
+                # 오류/예외 관련 메시지는 상태바에 표시하지 않음
+                if not any(keyword in message.lower() for keyword in ['오류', 'error', '실패', 'failed', '예외', 'exception', '❌']):
+                    self.status_label.setText(message)
+                else:
+                    # 오류 발생 시 일반적인 상태 메시지만 표시
+                    self.status_label.setText("작업 중 - 자세한 내용은 모니터링 탭을 확인하세요")
                 
         except Exception as e:
             # 로그 출력 중 오류가 발생해도 프로그램이 중단되지 않도록
             print(f"로그 출력 오류: {e} - 메시지: {message}")
+    
+    def log_error(self, message):
+        """오류 메시지 전용 로그 (상태바에는 표시하지 않음)"""
+        self.log_message(message, show_in_status=False)
+    
+    def log_status(self, message):
+        """상태 메시지 전용 로그 (상태바에도 표시)"""
+        self.log_message(message, show_in_status=True)
     
     def ensure_log_scroll(self):
         """로그창 스크롤 보장 (지연 실행)"""
@@ -8151,6 +8435,15 @@ class Main(QMainWindow):
     def analyze_all_my_products(self):
         """내 상품 전체 분석 & 수정 - 스레드 기반으로 개선"""
         try:
+            # 로그인 상태 확인
+            if not hasattr(self, 'is_logged_in') or not self.is_logged_in:
+                QMessageBox.warning(
+                    self, 
+                    "로그인 필요", 
+                    "가격 분석을 위해서는 먼저 BUYMA 로그인이 필요합니다.\n\n"
+                    "설정 탭에서 '🔐 BUYMA 로그인' 버튼을 클릭하여 로그인해주세요."
+                )
+                return
             # 이미 실행 중인 작업이 있으면 중지
             if self.price_analysis_worker and self.price_analysis_worker.isRunning():
                 QMessageBox.warning(self, "경고", "이미 가격 분석이 진행 중입니다.")

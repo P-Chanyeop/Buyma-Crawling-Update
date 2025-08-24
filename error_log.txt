@@ -1,0 +1,476 @@
+
+[2025-08-24 18:17:29.527914] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:29.534440] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:29.536445] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:29.538448] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:29.543966] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.910608] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.912615] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.914615] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.917127] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.922640] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.973895] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.976895] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.977895] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.979894] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.982886] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.994955] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.996954] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:30.999980] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.002998] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.005000] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.282649] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.284656] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.285655] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.288660] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.290725] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.302952] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.304953] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.306953] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.308952] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.310457] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.333490] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.335497] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.337672] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.339673] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.341829] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.386362] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.388361] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.390879] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.392887] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.394885] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.443019] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.445019] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.447020] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.448019] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.451063] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.638783] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.640944] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.642948] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.644950] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:31.647952] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:33.073726] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:33.075725] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:33.076727] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:33.078727] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:33.080234] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:33.564894] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:33.567407] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:34.819980] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:36.890076] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:36.893287] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:36.895286] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:36.898290] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:36.900808] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:36.930077] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:36.932084] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:36.934083] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:36.936084] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
+
+[2025-08-24 18:17:36.938590] 예상치 못한 오류:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 51, in paint
+    if option.state & option.State.Selected:
+AttributeError: 'QStyleOptionViewItem' object has no attribute 'State'
+
