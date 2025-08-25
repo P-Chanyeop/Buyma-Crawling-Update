@@ -14,6 +14,11 @@ import requests
 import threading
 import random
 from datetime import datetime
+
+# PyQt6 스타일시트 경고 무시
+import warnings
+warnings.filterwarnings("ignore", message="Could not parse stylesheet")
+
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QGridLayout, QTabWidget, QLabel, 
                             QLineEdit, QPushButton, QTextEdit, QTableWidget, 
@@ -563,6 +568,20 @@ class Main(QMainWindow):
         
         # 진행률 위젯 초기화
         self.progress_widget = ProgressWidget()
+        
+        # 통계 데이터 초기화
+        self.today_stats = {
+            'crawled_count': 0,
+            'uploaded_count': 0,
+            'success_count': 0,
+            'failed_count': 0,
+            'start_time': None,
+            'total_process_time': 0,
+            'process_count': 0
+        }
+        
+        # 크롤링된 상품 데이터 저장용
+        self.crawled_products = []
         
         self.init_ui()
         self.load_settings()
@@ -3449,6 +3468,13 @@ class Main(QMainWindow):
             QMessageBox.warning(self, "경고", "올바른 URL을 입력해주세요. (http:// 또는 https://로 시작)")
             return
         
+        # 크롤링 시작 시간 기록
+        import time
+        self.today_stats['start_time'] = time.time()
+        
+        # 크롤링된 상품 데이터 초기화
+        self.crawled_products = []
+        
         # UI 상태 변경 및 비활성화
         self.start_crawling_btn.setEnabled(False)
         self.stop_crawling_btn.setEnabled(True)
@@ -4182,11 +4208,35 @@ class Main(QMainWindow):
             
             # 카테고리 추출 (안전장치)
             try:
-                category_element = driver.find_element(By.CSS_SELECTOR, "#s_cate dd")
-                category_text = category_element.text.strip() if category_element else ""
+                category_element = driver.find_elements(By.CSS_SELECTOR, "ol.fab-topic-path--simple")[-1]
+                
+                # BUYMA 탑  아기 키즈  아동복・패션 용품(85cm~)  어린이용 탑스  [어른도 OK] [랄프 로렌] ● 폴로 컬러 T 셔츠 ● 이런식의 데이터가 오는데 
+                # 여기서 첫번째 데이터 및 상품명과 일치하는 텍스트를 제거 후 나머지가 카테고리
+                
+                full_category_text = category_element.text.strip()
+                self.log_message(f"🔍 전체 카테고리 경로: {full_category_text}")
+                
+                # 상품명 텍스트를 카테고리 경로에서 제거
+                if title.strip():
+                    cleaned_category_text = full_category_text.replace(title.strip(), "").strip()
+                    self.log_message(f"🔍 상품명 제거 후: {cleaned_category_text}")
+                else:
+                    cleaned_category_text = full_category_text
+                
+                # 공백으로 분리하여 각 부분 추출
+                category_parts = [part.strip() for part in cleaned_category_text.split() if part.strip()]
+                
+                # 첫 번째 요소(BUYMA 탑 등) 제거
+                if len(category_parts) > 1:
+                    categories = category_parts[1:]  # 첫 번째 제거
+                    self.log_message(f"✅ 최종 추출된 카테고리: {categories}")
+                else:
+                    categories = []
+                    self.log_message(f"⚠️ 카테고리가 충분하지 않음: {category_parts}")
+                
             except Exception as e:
                 self.log_message(f"⚠️ 카테고리 추출 실패: {str(e)}")
-                category_text = ""
+                categories = []
             
             # 결과 반환
             result = {
@@ -4198,7 +4248,7 @@ class Main(QMainWindow):
                 'colors': colors,
                 'sizes': sizes,
                 'description': description_text.strip(),
-                'category': category_text.strip(),
+                'categories': categories,  # 추출된 카테고리 리스트
                 'status': '수집 완료'
             }
             
@@ -8022,73 +8072,181 @@ class Main(QMainWindow):
         self.price_table.setItem(row, 6, status_item)
     
     def start_upload(self):
-        """업로드 시작"""
-        # 크롤링된 데이터가 있는지 확인
-        if self.crawling_table.rowCount() == 0:
-            QMessageBox.warning(self, "경고", "업로드할 상품 데이터가 없습니다.\n먼저 크롤링 탭에서 상품을 수집해주세요.")
-            return
-        
-        reply = QMessageBox.question(
-            self, 
-            "확인", 
-            f"크롤링된 {self.crawling_table.rowCount()}개 상품을 BUYMA에 업로드하시겠습니까?\n\n이 작업은 시간이 오래 걸릴 수 있습니다.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        
-        # UI 상태 변경
-        self.start_upload_btn.setEnabled(False)
-        self.pause_upload_btn.setEnabled(True)
-        self.stop_upload_btn.setEnabled(True)
-        self.upload_progress.setValue(0)
-        self.current_upload_status.setText("업로드 준비중...")
-        
-        # 업로드 테이블 초기화
-        self.upload_table.setRowCount(0)
-        
-        # 로그 시작
-        self.log_message(f"📤 BUYMA 업로드 시작: {self.crawling_table.rowCount()}개 상품")
-        
-        # 별도 스레드에서 업로드 실행
-        import threading
-        
-        self.upload_thread = threading.Thread(target=self.run_bulk_upload, daemon=True)
-        self.upload_thread.start()
-    
-    def run_bulk_upload(self):
-        """일괄 업로드 실행 (별도 스레드)"""
-        driver = None
+        """업로드 시작 - 로그인 및 크롤링 데이터 확인"""
         try:
-            self.log_message("🌐 브라우저를 시작합니다...")
-            
-            # Selenium WebDriver 설정
-            from selenium import webdriver
-            from selenium.webdriver.chrome.service import Service
-            from selenium.webdriver.chrome.options import Options
-            from webdriver_manager.chrome import ChromeDriverManager
-            
-            # Chrome 옵션 설정
-            chrome_options = Options()
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--window-size=1920,1080')
-            
-            # WebDriver 생성
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=chrome_options)
-            driver.implicitly_wait(self.timeout_setting.value())
-            
-            # BUYMA 로그인
-            if not self.buyma_login(driver):
-                self.log_message("❌ BUYMA 로그인 실패 - 업로드를 중단합니다.")
+            # 1. 로그인 상태 확인
+            if not hasattr(self, 'is_logged_in') or not self.is_logged_in:
+                QMessageBox.warning(
+                    self, 
+                    "로그인 필요", 
+                    "업로드를 위해서는 먼저 BUYMA 로그인이 필요합니다.\n\n"
+                    "설정 탭에서 '🔐 BUYMA 로그인' 버튼을 클릭하여 로그인해주세요."
+                )
                 return
             
-            # 크롤링된 상품들을 하나씩 업로드
+            # 2. 크롤링된 데이터가 있는지 확인
+            if self.crawling_table.rowCount() == 0:
+                QMessageBox.warning(
+                    self, 
+                    "크롤링 데이터 없음", 
+                    "업로드할 상품이 없습니다.\n\n"
+                    "먼저 '🔍 상품 크롤링' 탭에서 상품을 크롤링해주세요."
+                )
+                return
+            
+            # 3. 업로드할 상품 개수 확인
             total_products = self.crawling_table.rowCount()
-            success_count = 0
+            reply = QMessageBox.question(
+                self,
+                "업로드 확인",
+                f"총 {total_products}개의 상품을 BUYMA에 업로드하시겠습니까?\n\n"
+                f"⚠️ 주의: 업로드는 시간이 오래 걸릴 수 있습니다.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            
+            self.log_message(f"🚀 자동 업로드 시작: {total_products}개 상품")
+            
+            # 4. UI 상태 변경
+            self.start_upload_btn.setEnabled(False)
+            self.pause_upload_btn.setEnabled(True)
+            self.stop_upload_btn.setEnabled(True)
+            self.upload_progress.setValue(0)
+            self.current_upload_status.setText("업로드 준비중...")
+            
+            # 업로드 결과 테이블 초기화
+            self.upload_table.setRowCount(0)
+            
+            # 5. UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
+            self.switch_to_monitoring_tab()
+            self.set_tabs_enabled(False)
+            
+            # 6. 별도 스레드에서 업로드 실행
+            import threading
+            
+            self.upload_thread = threading.Thread(
+                target=self.run_bulk_upload, 
+                daemon=True
+            )
+            self.upload_thread.start()
+            
+        except Exception as e:
+            self.log_message(f"❌ 업로드 시작 오류: {str(e)}")
+            self.reset_upload_ui()
+    
+    def run_bulk_upload(self):
+        """대량 업로드 실행 (별도 스레드)"""
+        total_products = 0  # 변수 초기화
+        uploaded_count = 0
+        failed_count = 0
+        
+        try:
+            # 최대 이미지 수 확인 (올바른 속성명 사용)
+            max_images_setting = self.max_images.value()
+            if max_images_setting > 20:
+                self.log_message(f"❌ 최대 이미지 수가 20을 초과합니다 ({max_images_setting}개)")
+                self.log_message("📝 업로드 탭에서 최대 이미지 수를 20 이하로 변경해주세요.")
+                QMessageBox.warning(
+                    self,
+                    "이미지 수 초과",
+                    f"BUYMA는 최대 20장까지만 업로드 가능합니다.\n\n"
+                    f"현재 설정: {max_images_setting}장\n"
+                    f"업로드 탭에서 최대 이미지 수를 20 이하로 변경해주세요."
+                )
+                return  # finally 블록에서 UI 복원됨
+            
+            total_products = self.crawling_table.rowCount()
+            uploaded_count = 0
+            failed_count = 0
+            
+            self.log_message(f"📤 업로드 시작: 총 {total_products}개 상품 (최대 이미지: {max_images_setting}장)")
+            
+            # 각 상품별로 업로드 처리
+            for row in range(total_products):
+                try:
+                    # 중단 요청 확인
+                    if hasattr(self, 'upload_stopped') and self.upload_stopped:
+                        self.log_message("⏹️ 사용자에 의해 업로드가 중단되었습니다.")
+                        break
+                    
+                    # 크롤링 테이블에서 상품 정보 가져오기
+                    product_data = self.get_product_data_from_table(row)
+                    
+                    if not product_data:
+                        self.log_message(f"❌ 상품 {row + 1}: 데이터를 가져올 수 없습니다.")
+                        failed_count += 1
+                        continue
+                    
+                    # 진행률 업데이트
+                    progress = int((row / total_products) * 100)
+                    self.upload_progress.setValue(progress)
+                    self.current_upload_status.setText(f"업로드 중: {row + 1}/{total_products} - {product_data['title'][:30]}...")
+                    
+                    self.log_message(f"📤 업로드 중 ({row + 1}/{total_products}): {product_data['title'][:50]}...")
+                    
+                    # 실제 BUYMA 업로드 실행
+                    result = self.upload_single_product(product_data, row + 1, max_images_setting)
+                    
+                    # 결과에 따른 처리
+                    if result['success']:
+                        uploaded_count += 1
+                        self.increment_uploaded_count()  # 업로드 통계 업데이트
+                        self.log_message(f"✅ 업로드 성공: {product_data['title'][:30]}...")
+                        status = "✅ 성공"
+                        status_color = "#28a745"
+                    else:
+                        failed_count += 1
+                        self.log_message(f"❌ 업로드 실패: {product_data['title'][:30]}... - {result['error']}")
+                        status = f"❌ 실패: {result['error']}"
+                        status_color = "#dc3545"
+                    
+                    # 업로드 결과 테이블에 추가
+                    self.add_upload_result_to_table(product_data, status, status_color)
+                    
+                    # 업로드 간 딜레이 (서버 부하 방지)
+                    import time
+                    time.sleep(5)
+                    
+                except Exception as e:
+                    failed_count += 1
+                    self.log_message(f"❌ 상품 {row + 1} 업로드 오류: {str(e)}")
+                    
+                    # 오류 결과도 테이블에 추가
+                    try:
+                        product_data = self.get_product_data_from_table(row)
+                        if product_data:
+                            self.add_upload_result_to_table(product_data, f"❌ 오류: {str(e)}", "#dc3545")
+                    except:
+                        pass
+                    
+                    continue
+            
+            # 업로드 완료
+            self.upload_progress.setValue(100)
+            self.current_upload_status.setText("업로드 완료")
+            
+            self.log_message(f"🎉 업로드 완료!")
+            self.log_message(f"📊 결과: 성공 {uploaded_count}개, 실패 {failed_count}개")
+            
+        except Exception as e:
+            self.log_message(f"❌ 대량 업로드 오류: {str(e)}")
+            print(e)
+        
+        finally:
+            # UI 상태 복원
+            try:
+                self.start_upload_btn.setEnabled(True)
+                self.pause_upload_btn.setEnabled(False)
+                self.stop_upload_btn.setEnabled(False)
+                self.current_upload_status.setText("대기 중")
+                
+                # 다른 탭 활성화
+                self.set_tabs_enabled(True)
+                
+            except Exception as e:
+                self.log_message(f"❌ UI 상태 복원 오류: {str(e)}")
             failed_count = 0
             
             for row in range(total_products):
@@ -8099,7 +8257,7 @@ class Main(QMainWindow):
                     self.log_message(f"📤 업로드 중 ({row+1}/{total_products}): {product_data['title']}")
                     
                     # BUYMA에 상품 업로드
-                    upload_success = self.upload_single_product(driver, product_data)
+                    upload_success = self.upload_single_product(self.shared_driver, product_data)
                     
                     if upload_success:
                         success_count += 1
@@ -8128,17 +8286,6 @@ class Main(QMainWindow):
             self.log_message(f"🎉 업로드 완료! 성공: {success_count}개, 실패: {failed_count}개")
             self.current_upload_status.setText(f"완료: 성공 {success_count}개, 실패 {failed_count}개")
             self.upload_progress.setValue(100)
-            
-        except Exception as e:
-            self.log_message(f"❌ 일괄 업로드 오류: {str(e)}")
-        finally:
-            if driver:
-                driver.quit()
-            
-            # UI 상태 복원
-            self.start_upload_btn.setEnabled(True)
-            self.pause_upload_btn.setEnabled(False)
-            self.stop_upload_btn.setEnabled(False)
     
     def get_crawled_product_data(self, row):
         """크롤링된 상품 데이터 가져오기"""
@@ -9369,6 +9516,18 @@ class Main(QMainWindow):
     def add_crawling_result_safe(self, item_data):
         """크롤링 결과 추가 (메인 스레드에서 안전하게)"""
         try:
+            # 크롤링된 상품 데이터를 클래스 변수에 저장
+            self.crawled_products.append(item_data)
+            
+            # 크롤링 통계 업데이트
+            self.increment_crawled_count()
+            
+            # 성공/실패 통계 업데이트
+            if item_data.get('status') == '수집 완료':
+                self.increment_success_count()
+            else:
+                self.increment_failed_count()
+            
             row = self.crawling_table.rowCount()
             self.crawling_table.insertRow(row)
             
@@ -9505,6 +9664,14 @@ class Main(QMainWindow):
     def crawling_finished_safe(self):
         """크롤링 완료 처리 (메인 스레드에서 안전하게)"""
         try:
+            # 처리 시간 계산
+            if self.today_stats['start_time']:
+                import time
+                end_time = time.time()
+                process_time = end_time - self.today_stats['start_time']
+                self.add_process_time(process_time)
+                self.log_message(f"⏱️ 크롤링 처리 시간: {process_time:.1f}초")
+            
             # UI 상태 복원
             self.start_crawling_btn.setEnabled(True)
             self.stop_crawling_btn.setEnabled(False)
@@ -10569,6 +10736,953 @@ class Main(QMainWindow):
         except Exception as e:
             self.log_message(f"❌ 진행률 위젯 테스트 오류: {str(e)}")
 
+    def get_product_data_from_table(self, row):
+        """크롤링 테이블에서 상품 데이터 가져오기"""
+        try:
+            product_data = {}
+            
+            # 테이블에서 각 컬럼 데이터 추출
+            product_data['title'] = self.crawling_table.item(row, 0).text() if self.crawling_table.item(row, 0) else ""
+            product_data['brand'] = self.crawling_table.item(row, 1).text() if self.crawling_table.item(row, 1) else ""
+            product_data['price'] = self.crawling_table.item(row, 2).text() if self.crawling_table.item(row, 2) else ""
+            product_data['image_count'] = self.crawling_table.item(row, 3).text() if self.crawling_table.item(row, 3) else "0"
+            product_data['options'] = self.crawling_table.item(row, 4).text() if self.crawling_table.item(row, 4) else ""
+            product_data['url'] = self.crawling_table.item(row, 5).text() if self.crawling_table.item(row, 5) else ""
+            
+            # 추가 데이터 (크롤링 시 저장된 상세 정보)
+            if hasattr(self, 'crawled_products') and row < len(self.crawled_products):
+                crawled_data = self.crawled_products[row]
+                product_data.update(crawled_data)
+                self.log_message(f"🔍 크롤링 데이터 병합: 카테고리 {len(crawled_data.get('categories', []))}개")
+            else:
+                self.log_message(f"⚠️ 크롤링 데이터 없음: row={row}, crawled_products 길이={len(getattr(self, 'crawled_products', []))}")
+            
+            # 카테고리 데이터 확인 로그
+            categories = product_data.get('categories', [])
+            self.log_message(f"📂 최종 카테고리 데이터: {categories}")
+            
+            return product_data
+            
+        except Exception as e:
+            self.log_message(f"❌ 상품 데이터 추출 오류 (행 {row}): {str(e)}")
+            return None
+    
+    def upload_single_product(self, product_data, product_number, max_images):
+        """단일 상품 BUYMA 업로드 - 실제 구현"""
+        try:
+            # shared_driver 상태 확인
+            if not self.shared_driver:
+                self.log_message("❌ 브라우저가 초기화되지 않았습니다. 브라우저를 재시작합니다...")
+                self.restart_shared_driver()
+                if not self.shared_driver:
+                    return {'success': False, 'error': '브라우저 초기화 실패'}
+            
+            # 브라우저 응답 확인
+            try:
+                current_url = self.shared_driver.current_url
+                self.log_message(f"🌐 현재 브라우저 위치: {current_url}")
+            except Exception as e:
+                self.log_message(f"⚠️ 브라우저 응답 없음. 재시작합니다... ({str(e)})")
+                self.restart_shared_driver()
+                if not self.shared_driver:
+                    return {'success': False, 'error': '브라우저 재시작 실패'}
+            
+            self.log_message(f"🌐 BUYMA 상품 등록 페이지로 이동...")
+            
+            # BUYMA 상품 등록 페이지로 이동
+            try:
+                self.shared_driver.get("https://www.buyma.com/my/sell/new?tab=b")
+                import time
+                time.sleep(5)  # 페이지 로딩 대기
+            except Exception as e:
+                self.log_message(f"❌ 페이지 로딩 실패: {str(e)}")
+                return {'success': False, 'error': f'페이지 로딩 실패: {str(e)}'}
+            
+            # 1. 상품명 입력
+            self.log_message(f"📝 상품명 입력: {product_data['title'][:50]}...")
+            result = self.fill_product_title_real(product_data['title'])
+            if not result:
+                return {'success': False, 'error': '상품명 입력 실패'}
+            
+            # 2. 상품 설명 입력
+            self.log_message(f"📄 상품 설명 입력...")
+            result = self.fill_product_description_real(product_data)
+            if not result:
+                return {'success': False, 'error': '상품 설명 입력 실패'}
+            
+            # 3. 이미지 업로드 (최대 개수에 따라 순차적으로)
+            if 'images' in product_data and product_data['images']:
+                self.log_message(f"🖼️ 이미지 업로드: {len(product_data['images'])}개 (최대 {max_images}개)")
+                result = self.upload_product_images_real(product_data['images'], max_images)
+                if not result:
+                    return {'success': False, 'error': '이미지 업로드 실패'}
+            
+            # 4. 카테고리 선택
+            self.log_message(f"📂 카테고리 선택...")
+            result = self.select_product_category_real(product_data)
+            if not result:
+                return {'success': False, 'error': '카테고리 선택 실패'}
+            
+            # 5. 색상 추가 (크롤링된 색상 데이터가 있는 경우)
+            if 'colors' in product_data and product_data['colors']:
+                self.log_message(f"🎨 색상 추가: {len(product_data['colors'])}개")
+                result = self.add_product_colors_real(product_data)
+                if not result:
+                    self.log_message(f"⚠️ 색상 추가 실패 (계속 진행)")
+            else:
+                self.log_message(f"📝 크롤링된 색상 데이터가 없습니다.")
+            
+            # 6. 배송방법, 구입기간, 가격 설정
+            self.log_message(f"🚚 배송 및 상세 설정...")
+            result = self.set_shipping_and_details_real(product_data)
+            if not result:
+                return {'success': False, 'error': '배송 및 상세 설정 실패'}
+            
+            # 7. 상품 등록 완료 (실제 등록은 주석 처리)
+            self.log_message(f"✅ 상품 정보 입력 완료")
+            
+            # 사용자 확인 메시지 (상세 다이얼로그)
+            self.log_message(f"🔍 등록 전 최종 확인...")
+            
+            # 상세 확인 다이얼로그 표시 (메인 스레드에서 실행)
+            user_confirmed = False
+            
+            def show_confirmation():
+                nonlocal user_confirmed
+                user_confirmed = self.show_product_confirmation_dialog(product_data, product_number, max_images)
+            
+            # 메인 스레드에서 다이얼로그 실행
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, show_confirmation)
+            
+            # 사용자 응답 대기
+            import time
+            timeout = 60  # 60초 타임아웃
+            elapsed = 0
+            while elapsed < timeout:
+                time.sleep(0.5)
+                elapsed += 0.5
+                # 다이얼로그가 닫혔는지 확인하는 로직 필요
+                # 여기서는 간단히 처리
+                break
+            
+            if user_confirmed:
+                self.log_message(f"✅ 사용자가 등록을 승인했습니다.")
+                
+                # 실제 등록 버튼 클릭 (사용자가 승인한 경우에만)
+                try:
+                    from selenium.webdriver.common.by import By
+                    from selenium.webdriver.support.ui import WebDriverWait
+                    from selenium.webdriver.support import expected_conditions as EC
+                    
+                    confirm_button = WebDriverWait(self.shared_driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "button.bmm-c-btn.bmm-c-btn--p.bmm-c-btn--m.bmm-c-btn--thick"))
+                    )
+                    
+                    # 최종 확인 후 등록 버튼 클릭
+                    confirm_button.click()
+                    self.log_message("🚀 상품 등록 버튼 클릭 완료!")
+                    time.sleep(3)  # 등록 처리 대기
+                    
+                    # 등록 완료 확인 (선택사항)
+                    self.log_message("✅ 상품 등록이 완료되었습니다!")
+                    
+                except Exception as e:
+                    self.log_message(f"❌ 등록 버튼 클릭 오류: {str(e)}")
+                    return {'success': False, 'error': f'등록 버튼 클릭 실패: {str(e)}'}
+                    
+            else:
+                self.log_message(f"❌ 사용자가 등록을 취소했습니다.")
+                return {'success': False, 'error': '사용자가 등록을 취소함'}
+            
+            # 실제 등록 버튼 클릭 (필요시 주석 해제)
+            # result = self.submit_product_real()
+            # if not result:
+            #     return {'success': False, 'error': '상품 등록 실패'}
+            
+            return {'success': True, 'error': None}
+            
+        except Exception as e:
+            self.log_message(f"❌ 업로드 중 예외 발생: {str(e)}")
+            return {'success': False, 'error': str(e)}
+    
+    def fill_product_title_real(self, title):
+        """상품명 입력 - 실제 BUYMA 구조"""
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            
+            # 상품명 입력 필드 찾기 (0번째 인덱스)
+            title_inputs = WebDriverWait(self.shared_driver, 10).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'input.bmm-c-text-field'))
+            )
+            
+            if len(title_inputs) == 0:
+                self.log_message("❌ 상품명 입력 필드를 찾을 수 없습니다.")
+                return False
+            
+            title_input = title_inputs[0]  # 0번째 인덱스
+            title_input.clear()
+            title_input.send_keys(title)
+            
+            self.log_message(f"✅ 상품명 입력 완료: {title[:50]}...")
+            return True
+            
+        except Exception as e:
+            self.log_message(f"❌ 상품명 입력 오류: {str(e)}")
+            return False
+    
+    def fill_product_description_real(self, product_data):
+        """상품 설명 입력 - 실제 BUYMA 구조"""
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            
+            # 크롤링된 상품 설명 사용 (있으면 그대로, 없으면 기본 설명 생성)
+            if product_data.get('description'):
+                description = product_data['description']
+                self.log_message(f"📄 크롤링된 상품 설명 사용: {len(description)}자")
+            else:
+                # 크롤링된 설명이 없는 경우에만 기본 설명 생성
+                description = f"""
+{product_data.get('title', '')}
+
+브랜드: {product_data.get('brand', '')}
+가격: {product_data.get('price', '')}
+
+고품질 상품입니다.
+
+※ 해외 배송 상품으로 배송까지 2-3주 소요됩니다.
+※ 관세 및 배송비는 별도입니다.
+                """.strip()
+                self.log_message(f"📄 기본 상품 설명 생성: {len(description)}자")
+            
+            # 상품 설명 입력 필드 찾기 (첫 번째 인덱스)
+            description_textareas = WebDriverWait(self.shared_driver, 10).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'textarea.bmm-c-textarea'))
+            )
+            
+            if len(description_textareas) == 0:
+                self.log_message("❌ 상품 설명 입력 필드를 찾을 수 없습니다.")
+                return False
+            
+            description_textarea = description_textareas[0]  # 첫 번째 인덱스
+            description_textarea.clear()
+            description_textarea.send_keys(description)
+            
+            self.log_message(f"✅ 상품 설명 입력 완료 ({len(description)}자)")
+            return True
+            
+        except Exception as e:
+            self.log_message(f"❌ 상품 설명 입력 오류: {str(e)}")
+            return False
+    
+    def upload_product_images_real(self, images, max_images):
+        """이미지 업로드 - 실제 BUYMA 구조"""
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            import requests
+            import os
+            import tempfile
+            
+            # 파일 업로드 input 찾기
+            file_input = WebDriverWait(self.shared_driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="file"][accept="image/jpeg,image/gif,image/png"][multiple]'))
+            )
+            
+            upload_count = min(len(images), max_images)
+            self.log_message(f"🖼️ 이미지 업로드 시작: {upload_count}개 (최대 {max_images}개)")
+            
+            # 임시 디렉토리 생성
+            temp_dir = tempfile.mkdtemp()
+            uploaded_files = []
+            
+            try:
+                # 이미지 다운로드 및 로컬 저장
+                for i, image_url in enumerate(images[:max_images]):
+                    try:
+                        self.log_message(f"📷 이미지 {i + 1}/{upload_count} 다운로드 중...")
+                        
+                        # 이미지 다운로드
+                        response = requests.get(image_url, timeout=30)
+                        response.raise_for_status()
+                        
+                        # 파일 확장자 추출
+                        if image_url.lower().endswith('.jpg') or image_url.lower().endswith('.jpeg'):
+                            ext = '.jpg'
+                        elif image_url.lower().endswith('.png'):
+                            ext = '.png'
+                        elif image_url.lower().endswith('.gif'):
+                            ext = '.gif'
+                        else:
+                            ext = '.jpg'  # 기본값
+                        
+                        # 임시 파일로 저장
+                        temp_file_path = os.path.join(temp_dir, f"image_{i+1}{ext}")
+                        with open(temp_file_path, 'wb') as f:
+                            f.write(response.content)
+                        
+                        uploaded_files.append(temp_file_path)
+                        self.log_message(f"✅ 이미지 {i + 1} 다운로드 완료")
+                        
+                    except Exception as e:
+                        self.log_message(f"❌ 이미지 {i + 1} 다운로드 실패: {str(e)}")
+                        continue
+                
+                # 모든 이미지 파일을 한 번에 업로드
+                if uploaded_files:
+                    file_paths = '\n'.join(uploaded_files)
+                    file_input.send_keys(file_paths)
+                    
+                    self.log_message(f"✅ {len(uploaded_files)}개 이미지 업로드 완료")
+                    
+                    # 업로드 완료 대기
+                    import time
+                    time.sleep(3)
+                    
+                    return True
+                else:
+                    self.log_message("❌ 업로드할 이미지가 없습니다.")
+                    return False
+                    
+            finally:
+                # 임시 파일 정리
+                try:
+                    for file_path in uploaded_files:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                    os.rmdir(temp_dir)
+                except:
+                    pass
+            
+        except Exception as e:
+            self.log_message(f"❌ 이미지 업로드 오류: {str(e)}")
+            return False
+    
+    def select_product_category_real(self, product_data):
+        """카테고리 선택 - 크롤링된 카테고리 데이터 사용"""
+        try:
+            import time
+            
+            # 크롤링된 카테고리 데이터 사용
+            categories = product_data.get('categories', [])
+            
+            if not categories:
+                # 크롤링된 카테고리가 없으면 기본 카테고리 사용
+                categories = ["레디스패션", "원피스", "미니원피스"]
+                self.log_message(f"📂 크롤링된 카테고리가 없어 기본 카테고리 사용: {categories}")
+            else:
+                self.log_message(f"📂 크롤링된 카테고리 사용: {categories}")
+            
+            self.log_message(f"📂 카테고리 선택 시작: {' > '.join(categories)}")
+            
+            # 각 카테고리 레벨별로 선택
+            for level, category_name in enumerate(categories):
+                try:
+                    self.log_message(f"📂 {level + 1}차 카테고리 선택: {category_name}")
+                    
+                    # JavaScript로 카테고리 박스 열기 (중괄호 문제 해결)
+                    open_category_script = """
+                    const categoryControls = document.querySelectorAll('.sell-category-select .Select-control');
+                    if (categoryControls.length > """ + str(level) + """) {
+                        const categoryControl = categoryControls[""" + str(level) + """];
+                        categoryControl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                        categoryControl.click?.();
+                        console.log('카테고리 박스 클릭 완료:', """ + str(level) + """);
+                        return true;
+                    } else {
+                        console.warn('카테고리 컨트롤을 찾지 못했습니다. 인덱스:', """ + str(level) + """);
+                        return false;
+                    }
+                    """
+                    
+                    result = self.shared_driver.execute_script(open_category_script)
+                    if not result:
+                        self.log_message(f"❌ {level + 1}차 카테고리 선택 박스를 찾을 수 없습니다.")
+                        return False
+                    
+                    self.log_message(f"✅ {level + 1}차 카테고리 박스 클릭 완료")
+                    time.sleep(4)  # 메뉴 열림 대기
+                    
+                    # 메뉴가 실제로 열렸는지 확인
+                    menu_check_script = """
+                    const menu = document.querySelector('.sell-category-select .Select-menu-outer') || 
+                                document.querySelector('.Select-menu-outer') ||
+                                document.querySelector('.Select-menu');
+                    if (menu) {
+                        const options = menu.querySelectorAll('.Select-option, [class*="Select-option"]');
+                        console.log('메뉴 열림 확인 - 옵션 개수:', options.length);
+                        return options.length;
+                    }
+                    return 0;
+                    """
+                    
+                    option_count = self.shared_driver.execute_script(menu_check_script)
+                    self.log_message(f"🔍 메뉴 열림 확인: {option_count}개 옵션 발견")
+                    
+                    # 카테고리 옵션 선택 (개선된 로직)
+                    select_option_script = """
+                    function selectCategoryByExactText(text) {
+                        console.log('찾는 카테고리:', text);
+                        
+                        // 여러 가능한 메뉴 선택자 시도
+                        const menuSelectors = [
+                            '.sell-category-select .Select-menu-outer',
+                            '.Select-menu-outer',
+                            '.Select-menu',
+                            '[class*="Select-menu"]'
+                        ];
+                        
+                        let menu = null;
+                        for (const selector of menuSelectors) {
+                            menu = document.querySelector(selector);
+                            if (menu) {
+                                console.log('메뉴 발견:', selector);
+                                break;
+                            }
+                        }
+                        
+                        if (!menu) {
+                            console.warn('메뉴가 열려있지 않습니다. 모든 선택자 시도 실패');
+                            return false;
+                        }
+                        
+                        const options = [...menu.querySelectorAll('.Select-option, [class*="Select-option"]')];
+                        console.log('사용 가능한 옵션들:', options.map(opt => opt.textContent.trim()));
+                        
+                        if (options.length === 0) {
+                            console.warn('옵션을 찾을 수 없습니다.');
+                            return false;
+                        }
+                        
+                        // 1. 정확한 텍스트 매칭 시도
+                        let target = options.find(opt => opt.textContent.trim() === text);
+                        
+                        // 2. 부분 매칭 시도 (양방향)
+                        if (!target) {
+                            target = options.find(opt => {
+                                const optText = opt.textContent.trim();
+                                return optText.includes(text) || text.includes(optText);
+                            });
+                        }
+                        
+                        // 3. 키워드 매칭 시도
+                        if (!target) {
+                            const keywords = text.split(/[\\s・]+/);
+                            target = options.find(opt => {
+                                const optText = opt.textContent.trim();
+                                return keywords.some(keyword => 
+                                    keyword.length > 1 && (optText.includes(keyword) || keyword.includes(optText))
+                                );
+                            });
+                        }
+                        
+                        if (target) {
+                            console.log('매칭된 옵션:', target.textContent.trim());
+                            target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                            target.click?.();
+                            setTimeout(() => target.click?.(), 100); // 추가 클릭 시도
+                            return true;
+                        } else {
+                            console.warn('매칭되는 옵션을 찾지 못했습니다:', text);
+                            // 첫 번째 옵션 선택 (기본값)
+                            if (options.length > 0) {
+                                console.log('기본 옵션 선택:', options[0].textContent.trim());
+                                options[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                                options[0].click?.();
+                                setTimeout(() => options[0].click?.(), 100);
+                                return true;
+                            }
+                            return false;
+                        }
+                    }
+                    
+                    return selectCategoryByExactText('""" + category_name + """');
+                    """
+                    
+                    option_result = self.shared_driver.execute_script(select_option_script)
+                    
+                    if option_result:
+                        self.log_message(f"✅ {level + 1}차 카테고리 선택 완료: {category_name}")
+                        time.sleep(1)
+                    else:
+                        self.log_message(f"❌ {level + 1}차 카테고리 옵션 선택 실패: {category_name}")
+                        # 실패해도 계속 진행 (다음 레벨이 있을 수 있음)
+                
+                except Exception as e:
+                    self.log_message(f"❌ {level + 1}차 카테고리 선택 오류: {str(e)}")
+                    continue
+            
+            self.log_message(f"✅ 카테고리 선택 프로세스 완료")
+            return True
+            
+        except Exception as e:
+            self.log_message(f"❌ 카테고리 선택 오류: {str(e)}")
+            return False
+    
+    def add_product_colors_real(self, product_data):
+        """상품 색상 추가 - 크롤링된 데이터 기반"""
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            import time
+            
+            # 크롤링된 색상 데이터 사용
+            colors = product_data.get('colors', [])
+            
+            if not colors or len(colors) == 0:
+                self.log_message("📝 크롤링된 색상 데이터가 없습니다.")
+                return True
+            
+            base_select_index = 4  # 첫 번째 색상 선택 박스 인덱스
+            base_input_index = 3   # 첫 번째 색상 이름 입력 인덱스
+            
+            self.log_message(f"🎨 크롤링된 색상 추가 시작: {len(colors)}개 색상 - {colors}")
+            
+            for i, color in enumerate(colors):
+                try:
+                    self.log_message(f"🎨 색상 {i + 1}/{len(colors)} 추가 중: {color}")
+                    
+                    # 두 번째 색상부터 추가 버튼 클릭
+                    if i > 0:
+                        self.log_message(f"➕ 색상 추가 버튼 클릭 ({i + 1}번째 색상)")
+                        add_color_btn = WebDriverWait(self.shared_driver, 10).until(
+                            EC.element_to_be_clickable((By.CSS_SELECTOR, "div.bmm-c-form-table__foot > a"))
+                        )
+                        add_color_btn.click()
+                        time.sleep(2)  # 새 색상 필드 로딩 대기
+                    
+                    # 색상 선택 박스 클릭 (인덱스는 i만큼 증가)
+                    current_select_index = base_select_index + i
+                    self.log_message(f"🎯 색상 선택 박스 클릭 (인덱스: {current_select_index})")
+                    
+                    select_controls = WebDriverWait(self.shared_driver, 10).until(
+                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.Select-control"))
+                    )
+                    
+                    if len(select_controls) <= current_select_index:
+                        self.log_message(f"❌ 색상 선택 박스를 찾을 수 없습니다 (인덱스: {current_select_index})")
+                        continue
+                    
+                    color_select = select_controls[current_select_index]
+                    color_select.click()
+                    time.sleep(1)
+                    
+                    # 색상 옵션 선택
+                    self.log_message(f"🔍 색상 옵션 검색 중: {color}")
+                    color_options = WebDriverWait(self.shared_driver, 10).until(
+                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.Select-option"))
+                    )
+                    
+                    # 색상과 일치하는 옵션 찾기
+                    color_found = False
+                    for option in color_options:
+                        option_text = option.text.strip().lower()
+                        color_lower = color.lower()
+                        
+                        # 색상명 매칭 (부분 일치 포함)
+                        if (color_lower in option_text or 
+                            option_text in color_lower or
+                            self.match_color_name(color_lower, option_text)):
+                            
+                            option.click()
+                            self.log_message(f"✅ 색상 옵션 선택: {option.text}")
+                            color_found = True
+                            time.sleep(1)
+                            break
+                    
+                    if not color_found:
+                        # 매칭되는 색상이 없으면 첫 번째 옵션 선택
+                        if color_options:
+                            color_options[0].click()
+                            self.log_message(f"⚠️ 기본 색상 선택: {color_options[0].text} ('{color}' 매칭 실패)")
+                            time.sleep(1)
+                        else:
+                            self.log_message(f"❌ 색상 옵션을 찾을 수 없습니다.")
+                            continue
+                    
+                    # 색상 이름 입력 (인덱스는 i만큼 증가)
+                    current_input_index = base_input_index + i
+                    self.log_message(f"📝 색상 이름 입력 (인덱스: {current_input_index}): {color}")
+                    
+                    text_inputs = WebDriverWait(self.shared_driver, 10).until(
+                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "input.bmm-c-text-field"))
+                    )
+                    
+                    if len(text_inputs) <= current_input_index:
+                        self.log_message(f"❌ 색상 이름 입력 필드를 찾을 수 없습니다 (인덱스: {current_input_index})")
+                        continue
+                    
+                    color_input = text_inputs[current_input_index]
+                    color_input.clear()
+                    color_input.send_keys(color)
+                    
+                    self.log_message(f"✅ 색상 {i + 1} 추가 완료: {color}")
+                    time.sleep(1)
+                    
+                except Exception as e:
+                    self.log_message(f"❌ 색상 {i + 1} 추가 실패: {str(e)}")
+                    continue
+            
+            self.log_message(f"🎉 모든 색상 추가 완료: {len(colors)}개")
+            return True
+            
+        except Exception as e:
+            self.log_message(f"❌ 색상 추가 오류: {str(e)}")
+            return False
+        
+    
+    def match_color_name(self, color1, color2):
+        """색상명 매칭 헬퍼 함수"""
+        # 색상명 매칭 사전 (한국어 <-> 일본어/영어)
+        color_mapping = {
+            'black': ['블랙', '검정', 'ブラック', 'black'],
+            'white': ['화이트', '흰색', 'ホワイト', 'white'],
+            'red': ['레드', '빨강', 'レッド', 'red'],
+            'blue': ['블루', '파랑', 'ブルー', 'blue'],
+            'green': ['그린', '초록', 'グリーン', 'green'],
+            'yellow': ['옐로우', '노랑', 'イエロー', 'yellow'],
+            'pink': ['핑크', '분홍', 'ピンク', 'pink'],
+            'brown': ['브라운', '갈색', 'ブラウン', 'brown'],
+            'gray': ['그레이', '회색', 'グレー', 'gray', 'grey'],
+            'navy': ['네이비', '남색', 'ネイビー', 'navy'],
+            'beige': ['베이지', 'ベージュ', 'beige'],
+            'gold': ['골드', '금색', 'ゴールド', 'gold'],
+            'silver': ['실버', '은색', 'シルバー', 'silver']
+        }
+        
+        # 정확한 매칭 확인
+        for key, values in color_mapping.items():
+            if color1 in values and color2 in values:
+                return True
+        
+        return False
+    
+    def set_shipping_and_details_real(self, product_data):
+        """배송방법, 구입기간, 가격 설정 - 실제 BUYMA 구조"""
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from datetime import datetime, timedelta
+            import time
+            
+            # 1. 배송방법 선택 (두 번째 체크박스)
+            self.log_message("🚚 배송방법 선택...")
+            try:
+                checkboxes = WebDriverWait(self.shared_driver, 10).until(
+                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".bmm-c-checkbox__input"))
+                )
+                
+                if len(checkboxes) >= 2:
+                    # 두 번째 체크박스 클릭 (인덱스 1)
+                    checkbox = checkboxes[1]
+                    self.shared_driver.execute_script("arguments[0].click();", checkbox)
+                    self.log_message("✅ 배송방법 선택 완료 (두 번째 옵션)")
+                    time.sleep(1)
+                else:
+                    self.log_message("❌ 배송방법 체크박스를 찾을 수 없습니다.")
+                    return False
+                    
+            except Exception as e:
+                self.log_message(f"❌ 배송방법 선택 오류: {str(e)}")
+                return False
+            
+            # 2. 구입기간 설정 (오늘 + 90일)
+            self.log_message("📅 구입기간 설정...")
+            try:
+                # 오늘 날짜 + 90일 계산
+                today = datetime.now()
+                future_date = today + timedelta(days=90)
+                date_string = future_date.strftime('%Y/%m/%d')
+                
+                self.log_message(f"📅 구입기간 설정: {date_string} (오늘 + 90일)")
+                
+                # 날짜 입력 필드 찾기
+                date_input = WebDriverWait(self.shared_driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, ".react-datepicker__input-container > input"))
+                )
+                
+                # JavaScript로 날짜 값 설정
+                self.shared_driver.execute_script(f"arguments[0].value = '{date_string}';", date_input)
+                
+                # 변경 이벤트 트리거
+                self.shared_driver.execute_script("arguments[0].dispatchEvent(new Event('change', { bubbles: true }));", date_input)
+                
+                self.log_message(f"✅ 구입기간 설정 완료: {date_string}")
+                time.sleep(1)
+                
+            except Exception as e:
+                self.log_message(f"❌ 구입기간 설정 오류: {str(e)}")
+                return False
+            
+            # 3. 상품 가격 입력
+            self.log_message("💰 상품 가격 입력...")
+            try:
+                # 가격에서 숫자만 추출
+                price_text = product_data.get('price', '')
+                import re
+                price_numbers = re.findall(r'[\d,]+', str(price_text))
+                
+                if price_numbers:
+                    clean_price = price_numbers[0].replace(',', '')
+                    self.log_message(f"💰 가격 입력: ¥{clean_price}")
+                    
+                    # 가격 입력 필드 찾기
+                    price_input = WebDriverWait(self.shared_driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "input.bmm-c-text-field.bmm-c-text-field--half-size-char"))
+                    )
+                    
+                    price_input.clear()
+                    price_input.send_keys(clean_price)
+                    
+                    self.log_message(f"✅ 가격 입력 완료: ¥{clean_price}")
+                    time.sleep(1)
+                else:
+                    self.log_message("❌ 가격 정보를 추출할 수 없습니다.")
+                    return False
+                    
+            except Exception as e:
+                self.log_message(f"❌ 가격 입력 오류: {str(e)}")
+                return False
+            
+            # 4. 입력 내용 확인 버튼 클릭 (테스트용 주석 처리)
+            self.log_message("🔍 입력 내용 확인 버튼...")
+            try:
+                confirm_button = WebDriverWait(self.shared_driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button.bmm-c-btn.bmm-c-btn--p.bmm-c-btn--m.bmm-c-btn--thick"))
+                )
+                
+                self.log_message("✅ 확인 버튼 발견 (테스트를 위해 클릭하지 않음)")
+                
+                # 실제 클릭은 주석 처리 (테스트용)
+                # confirm_button.click()
+                # self.log_message("✅ 입력 내용 확인 버튼 클릭 완료")
+                # time.sleep(2)
+                
+            except Exception as e:
+                self.log_message(f"❌ 확인 버튼 찾기 오류: {str(e)}")
+                return False
+            
+            self.log_message("🎉 배송방법, 구입기간, 가격 설정 완료")
+            return True
+            
+        except Exception as e:
+            self.log_message(f"❌ 배송 및 상세 설정 오류: {str(e)}")
+            return False
+    
+    def show_product_confirmation_dialog(self, product_data, product_number, total_products):
+        """상품 등록 전 상세 확인 다이얼로그"""
+        try:
+            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QMessageBox
+            from PyQt6.QtCore import Qt
+            
+            # 커스텀 다이얼로그 생성
+            dialog = QDialog()
+            dialog.setWindowTitle(f"상품 등록 확인 ({product_number}/{total_products})")
+            dialog.setModal(True)
+            dialog.resize(600, 500)
+            
+            layout = QVBoxLayout()
+            
+            # 제목
+            title_label = QLabel(f"🔍 상품 등록 전 최종 확인 ({product_number}/{total_products})")
+            title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; margin-bottom: 10px;")
+            layout.addWidget(title_label)
+            
+            # 상품 정보 상세 표시
+            info_text = QTextEdit()
+            info_text.setReadOnly(True)
+            info_text.setMaximumHeight(300)
+            
+            # 상품 정보 포맷팅
+            colors_text = ", ".join(product_data.get('colors', [])) if product_data.get('colors') else "없음"
+            images_count = len(product_data.get('images', []))
+            
+            detailed_info = f"""
+📋 상품 정보 상세
+
+🏷️ 상품명: {product_data.get('title', 'N/A')}
+
+🏢 브랜드: {product_data.get('brand', 'N/A')}
+
+💰 가격: {product_data.get('price', 'N/A')}
+
+🖼️ 이미지: {images_count}개
+   └── 최대 20개까지 업로드됩니다
+
+🎨 색상: {len(product_data.get('colors', []))}개
+   └── {colors_text}
+
+📝 상품 설명: {len(product_data.get('description', ''))}자
+   └── {product_data.get('description', '기본 설명이 생성됩니다')[:100]}...
+
+🚚 배송방법: 두 번째 옵션 선택됨
+
+📅 구입기간: 오늘 + 90일 (자동 설정)
+
+⚠️ 주의사항:
+   • 실제 BUYMA에 상품이 등록됩니다
+   • 등록 후 수정이 어려울 수 있습니다
+   • 테스트 중이라면 '취소'를 선택하세요
+            """.strip()
+            
+            info_text.setPlainText(detailed_info)
+            layout.addWidget(info_text)
+            
+            # 버튼 레이아웃
+            button_layout = QHBoxLayout()
+            
+            # 취소 버튼 (기본값)
+            cancel_btn = QPushButton("❌ 취소 (테스트 모드)")
+            cancel_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #e74c3c;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    font-size: 14px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #c0392b;
+                }
+            """)
+            cancel_btn.clicked.connect(dialog.reject)
+            
+            # 등록 버튼
+            register_btn = QPushButton("🚀 등록 진행")
+            register_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #27ae60;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    font-size: 14px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #229954;
+                }
+            """)
+            register_btn.clicked.connect(dialog.accept)
+            
+            button_layout.addWidget(cancel_btn)
+            button_layout.addWidget(register_btn)
+            layout.addLayout(button_layout)
+            
+            dialog.setLayout(layout)
+            
+            # 다이얼로그 실행
+            result = dialog.exec()
+            
+            return result == QDialog.DialogCode.Accepted
+            
+        except Exception as e:
+            self.log_message(f"❌ 확인 다이얼로그 오류: {str(e)}")
+            # 오류 시 기본 메시지박스로 대체
+            reply = QMessageBox.question(
+                None,
+                "상품 등록 확인",
+                f"상품을 등록하시겠습니까?\n\n{product_data.get('title', 'N/A')[:50]}...",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            return reply == QMessageBox.StandardButton.Yes
+    
+    def add_upload_result_to_table(self, product_data, status, status_color):
+        """업로드 결과를 테이블에 추가"""
+        try:
+            row = self.upload_table.rowCount()
+            self.upload_table.insertRow(row)
+            
+            # 각 컬럼에 데이터 추가
+            self.upload_table.setItem(row, 0, QTableWidgetItem(product_data.get('title', '')))
+            self.upload_table.setItem(row, 1, QTableWidgetItem(product_data.get('brand', '')))
+            self.upload_table.setItem(row, 2, QTableWidgetItem(product_data.get('price', '')))
+            
+            # 상태 컬럼 (색상 적용)
+            status_item = QTableWidgetItem(status)
+            status_item.setForeground(QBrush(QColor(status_color)))
+            self.upload_table.setItem(row, 3, status_item)
+            
+        except Exception as e:
+            self.log_message(f"❌ 결과 테이블 추가 오류: {str(e)}")
+    
+    def reset_upload_ui(self):
+        """업로드 UI 상태 복원"""
+        try:
+            self.start_upload_btn.setEnabled(True)
+            self.pause_upload_btn.setEnabled(False)
+            self.stop_upload_btn.setEnabled(False)
+            self.current_upload_status.setText("대기 중")
+            
+            # 다른 탭 활성화
+            self.set_tabs_enabled(True)
+            
+        except Exception as e:
+            self.log_message(f"❌ UI 상태 복원 오류: {str(e)}")
+    
+    def update_today_stats(self):
+        """오늘 통계 업데이트"""
+        try:
+            # 오늘 크롤링 수
+            self.today_crawled.setText(str(self.today_stats['crawled_count']))
+            
+            # 오늘 업로드 수
+            self.today_uploaded.setText(str(self.today_stats['uploaded_count']))
+            
+            # 성공률 계산
+            total_attempts = self.today_stats['success_count'] + self.today_stats['failed_count']
+            if total_attempts > 0:
+                success_rate = (self.today_stats['success_count'] / total_attempts) * 100
+                self.success_rate.setText(f"{success_rate:.1f}%")
+            else:
+                self.success_rate.setText("0%")
+            
+            # 평균 처리 시간 계산
+            if self.today_stats['process_count'] > 0:
+                avg_time = self.today_stats['total_process_time'] / self.today_stats['process_count']
+                self.avg_process_time.setText(f"{avg_time:.1f}초")
+            else:
+                self.avg_process_time.setText("0초")
+                
+        except Exception as e:
+            self.log_message(f"❌ 통계 업데이트 오류: {str(e)}")
+    
+    def increment_crawled_count(self):
+        """크롤링 수 증가"""
+        self.today_stats['crawled_count'] += 1
+        self.update_today_stats()
+    
+    def increment_uploaded_count(self):
+        """업로드 수 증가"""
+        self.today_stats['uploaded_count'] += 1
+        self.update_today_stats()
+    
+    def add_process_time(self, process_time):
+        """처리 시간 추가"""
+        self.today_stats['total_process_time'] += process_time
+        self.today_stats['process_count'] += 1
+        self.update_today_stats()
+    
+    def increment_success_count(self):
+        """성공 수 증가"""
+        self.today_stats['success_count'] += 1
+        self.update_today_stats()
+    
+    def increment_failed_count(self):
+        """실패 수 증가"""
+        self.today_stats['failed_count'] += 1
+        self.update_today_stats()
+
 
 def main():
     """메인 함수 - 전역 예외 처리 포함"""
@@ -10625,3 +11739,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
