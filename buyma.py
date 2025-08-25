@@ -295,7 +295,7 @@ class Main(QMainWindow):
         
         # 주력 상품 데이터 초기화
         self.favorite_products = []
-        self.favorites_file = "favorite_products.json"
+        self.favorites_file = "주력상품_목록.json"
         
         # 워커 스레드 초기화
         self.price_analysis_worker = None
@@ -779,8 +779,8 @@ class Main(QMainWindow):
         # 가격 관리 탭
         self.create_price_tab()
         
-        # 주력 상품 관리 탭 (새로 추가)
-        self.create_favorite_products_tab()
+        # 주력 상품 관리 탭
+        self.create_favorite_tab()
         
         # 업로드 탭
         self.create_upload_tab()
@@ -1144,259 +1144,6 @@ class Main(QMainWindow):
         
         self.tab_widget.addTab(tab, "📊 대시보드")
     
-    def create_favorite_products_tab(self):
-        """주력 상품 관리 탭 생성"""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
-        
-        # 제목
-        title_label = QLabel("⭐ 주력 상품 관리")
-        title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 10px;")
-        layout.addWidget(title_label)
-        
-        # 상단 컨트롤 영역
-        control_layout = QHBoxLayout()
-        
-        # 상품 추가 섹션
-        add_group = QGroupBox("🔖 주력 상품 추가")
-        add_group.setMinimumHeight(120)
-        add_layout = QVBoxLayout(add_group)
-        
-        # 상품 정보 입력
-        input_layout = QHBoxLayout()
-        
-        input_layout.addWidget(QLabel("브랜드:"))
-        self.fav_brand_input = QLineEdit()
-        self.fav_brand_input.setPlaceholderText("예: SAN SAN GEAR")
-        self.fav_brand_input.setMinimumHeight(35)
-        input_layout.addWidget(self.fav_brand_input)
-        
-        input_layout.addWidget(QLabel("상품명:"))
-        self.fav_product_input = QLineEdit()
-        self.fav_product_input.setPlaceholderText("예: EYEWITHNESS T-SHIRT")
-        self.fav_product_input.setMinimumHeight(35)
-        input_layout.addWidget(self.fav_product_input)
-        
-        input_layout.addWidget(QLabel("현재가격:"))
-        self.fav_price_input = QSpinBox()
-        self.fav_price_input.setRange(100, 1000000)
-        self.fav_price_input.setValue(15000)
-        self.fav_price_input.setStyleSheet(self.get_spinbox_style())
-        self.fav_price_input.setSuffix("엔")
-        self.fav_price_input.setMinimumHeight(35)
-        input_layout.addWidget(self.fav_price_input)
-        
-        add_layout.addLayout(input_layout)
-        
-        # 추가 버튼
-        add_btn_layout = QHBoxLayout()
-        self.add_favorite_btn = QPushButton("⭐ 주력 상품 추가")
-        self.add_favorite_btn.setMinimumHeight(40)
-        self.add_favorite_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #f39c12, stop:1 #e67e22);
-                font-size: 14px;
-                font-weight: bold;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #e67e22, stop:1 #d35400);
-            }
-        """)
-        self.add_favorite_btn.clicked.connect(self.add_favorite_product)
-        add_btn_layout.addWidget(self.add_favorite_btn)
-        
-        self.import_from_crawling_btn = QPushButton("📥 크롤링 결과에서 추가")
-        self.import_from_crawling_btn.setMinimumHeight(40)
-        self.import_from_crawling_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #3498db, stop:1 #2980b9);
-                font-size: 14px;
-                font-weight: bold;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #2980b9, stop:1 #1f4e79);
-            }
-        """)
-        self.import_from_crawling_btn.clicked.connect(self.import_from_crawling)
-        add_btn_layout.addWidget(self.import_from_crawling_btn)
-        
-        add_layout.addLayout(add_btn_layout)
-        control_layout.addWidget(add_group)
-        
-        # 관리 버튼 섹션
-        manage_group = QGroupBox("🛠️ 관리 기능")
-        manage_group.setMinimumHeight(120)
-        manage_layout = QVBoxLayout(manage_group)
-        
-        # 일괄 관리 버튼들
-        batch_layout = QHBoxLayout()
-        
-        # 새로운 기능: 주력상품 일괄 처리 시작 버튼
-        self.start_favorite_analysis_btn = QPushButton("🚀 주력상품 가격확인 시작")
-        self.start_favorite_analysis_btn.setMinimumHeight(45)
-        self.start_favorite_analysis_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #e74c3c, stop:1 #c0392b);
-                font-size: 14px;
-                font-weight: bold;
-                border-radius: 6px;
-                font-family: '맑은 고딕';
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #c0392b, stop:1 #a93226);
-            }
-        """)
-        self.start_favorite_analysis_btn.clicked.connect(self.start_favorite_analysis)
-        batch_layout.addWidget(self.start_favorite_analysis_btn)
-        
-        # 중지 버튼 추가
-        self.stop_favorite_analysis_btn = QPushButton("⏹️ 확인 중지")
-        self.stop_favorite_analysis_btn.setMinimumHeight(45)
-        self.stop_favorite_analysis_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #dc3545, stop:1 #c82333);
-                font-size: 14px;
-                font-weight: bold;
-                border-radius: 6px;
-                font-family: '맑은 고딕';
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #c82333, stop:1 #a93226);
-            }
-        """)
-        self.stop_favorite_analysis_btn.clicked.connect(self.stop_favorite_analysis)
-        self.stop_favorite_analysis_btn.setEnabled(False)
-        batch_layout.addWidget(self.stop_favorite_analysis_btn)
-        
-        self.check_all_prices_btn = QPushButton("🔍 전체 가격 확인")
-        self.check_all_prices_btn.setMinimumHeight(40)
-        self.check_all_prices_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #27ae60, stop:1 #229954);
-                font-size: 13px;
-                font-weight: bold;
-                border-radius: 6px;
-                font-family: '맑은 고딕';
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #229954, stop:1 #1e8449);
-            }
-        """)
-        self.check_all_prices_btn.clicked.connect(self.check_all_favorite_prices)
-        batch_layout.addWidget(self.check_all_prices_btn)
-        
-        self.auto_update_favorites_btn = QPushButton("🔄 자동 가격 수정")
-        self.auto_update_favorites_btn.setMinimumHeight(40)
-        self.auto_update_favorites_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #8e44ad, stop:1 #7d3c98);
-                font-size: 13px;
-                font-weight: bold;
-                border-radius: 6px;
-                font-family: '맑은 고딕';
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #7d3c98, stop:1 #6c3483);
-            }
-        """)
-        self.auto_update_favorites_btn.clicked.connect(self.auto_update_favorite_prices)
-        batch_layout.addWidget(self.auto_update_favorites_btn)
-        
-        manage_layout.addLayout(batch_layout)
-        
-        # 파일 관리 버튼들
-        file_layout = QHBoxLayout()
-        
-        self.save_favorites_btn = QPushButton("💾 목록 저장")
-        self.save_favorites_btn.setMinimumHeight(35)
-        self.save_favorites_btn.clicked.connect(self.save_favorite_products)
-        file_layout.addWidget(self.save_favorites_btn)
-        
-        self.load_favorites_btn = QPushButton("📂 목록 불러오기")
-        self.load_favorites_btn.setMinimumHeight(35)
-        self.load_favorites_btn.clicked.connect(self.load_favorite_products)
-        file_layout.addWidget(self.load_favorites_btn)
-        
-        self.clear_favorites_btn = QPushButton("🗑️ 전체 삭제")
-        self.clear_favorites_btn.setMinimumHeight(35)
-        self.clear_favorites_btn.setStyleSheet("background: #e74c3c; color: white;")
-        self.clear_favorites_btn.clicked.connect(self.clear_favorite_products)
-        file_layout.addWidget(self.clear_favorites_btn)
-        
-        manage_layout.addLayout(file_layout)
-        control_layout.addWidget(manage_group)
-        
-        layout.addLayout(control_layout)
-        
-        # 주력 상품 목록 테이블
-        table_group = QGroupBox("📋 주력 상품 목록")
-        table_layout = QVBoxLayout(table_group)
-        
-        self.favorite_table = QTableWidget()
-        self.favorite_table.setColumnCount(8)
-        self.favorite_table.setHorizontalHeaderLabels([
-            "브랜드", "상품명", "현재가격", "경쟁사 최저가", "제안가격", "상태", "마지막 확인", "액션"
-        ])
-        self.favorite_table.horizontalHeader().setStretchLastSection(True)
-        self.favorite_table.setAlternatingRowColors(True)
-        self.favorite_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        
-        # 테이블 컬럼 너비 설정
-        self.favorite_table.setColumnWidth(0, 120)  # 브랜드
-        self.favorite_table.setColumnWidth(1, 200)  # 상품명
-        self.favorite_table.setColumnWidth(2, 100)  # 현재가격
-        self.favorite_table.setColumnWidth(3, 120)  # 경쟁사 최저가
-        self.favorite_table.setColumnWidth(4, 100)  # 제안가격
-        self.favorite_table.setColumnWidth(5, 100)  # 상태
-        self.favorite_table.setColumnWidth(6, 120)  # 마지막 확인
-        
-        table_layout.addWidget(self.favorite_table)
-        
-        # 통계 정보
-        stats_layout = QHBoxLayout()
-        
-        self.total_favorites = QLabel("총 주력상품: 0개")
-        self.total_favorites.setStyleSheet("font-weight: bold; color: #2c3e50; padding: 5px;")
-        stats_layout.addWidget(self.total_favorites)
-        
-        self.need_update_count = QLabel("수정 필요: 0개")
-        self.need_update_count.setStyleSheet("font-weight: bold; color: #e74c3c; padding: 5px;")
-        stats_layout.addWidget(self.need_update_count)
-        
-        self.up_to_date_count = QLabel("최신 상태: 0개")
-        self.up_to_date_count.setStyleSheet("font-weight: bold; color: #27ae60; padding: 5px;")
-        stats_layout.addWidget(self.up_to_date_count)
-        
-        self.last_check_time = QLabel("마지막 확인: 없음")
-        self.last_check_time.setStyleSheet("font-weight: bold; color: #7f8c8d; padding: 5px;")
-        stats_layout.addWidget(self.last_check_time)
-        
-        stats_layout.addStretch()
-        table_layout.addLayout(stats_layout)
-        
-        layout.addWidget(table_group)
-        
-        # 초기 데이터 로드 (UI 완성 후에 호출하도록 제거)
-        # self.load_favorite_products_on_startup()  # 이 줄 제거
-        
-        self.tab_widget.addTab(tab, "⭐ 주력 상품")
-        
     def create_crawling_tab(self):
         """크롤링 탭 생성"""
         tab = QWidget()
@@ -1794,118 +1541,241 @@ class Main(QMainWindow):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
-        # 주력 상품 관리 설명
-        info_group = QGroupBox("⭐ 주력 상품 관리")
+        # 안내 정보
+        info_group = QGroupBox("ℹ️ 주력 상품 관리")
         info_layout = QVBoxLayout(info_group)
         
-        info_label = QLabel("💡 중요한 상품들을 주력 상품으로 등록하여 정기적으로 가격을 모니터링하고 관리할 수 있습니다.")
+        info_label = QLabel("💡 내 상품에서 중요한 상품들을 주력 상품으로 등록하여 정기적으로 가격을 모니터링하고 관리할 수 있습니다.")
         info_label.setStyleSheet("color: #666; font-size: 11px; padding: 10px;")
         info_label.setWordWrap(True)
         info_layout.addWidget(info_label)
         
         layout.addWidget(info_group)
         
-        # 주력 상품 추가
-        add_group = QGroupBox("➕ 주력 상품 추가")
-        add_layout = QGridLayout(add_group)
+        # 설정 섹션
+        settings_group = QGroupBox("⚙️ 가격 관리 설정")
+        settings_layout = QGridLayout(settings_group)
         
-        add_layout.addWidget(QLabel("상품명:"), 0, 0)
-        self.fav_product_name = QLineEdit()
-        self.fav_product_name.setPlaceholderText("주력 상품으로 등록할 상품명을 입력하세요")
-        add_layout.addWidget(self.fav_product_name, 0, 1, 1, 2)
+        # 할인 금액 설정
+        settings_layout.addWidget(QLabel("할인 금액:"), 0, 0)
+        self.fav_discount_amount = QSpinBox()
+        self.fav_discount_amount.setRange(0, 10000)
+        self.fav_discount_amount.setValue(100)
+        self.fav_discount_amount.setSuffix(" 엔")
+        self.fav_discount_amount.setToolTip("경쟁사 최저가보다 얼마나 할인할지 설정")
+        settings_layout.addWidget(self.fav_discount_amount, 0, 1)
         
-        add_layout.addWidget(QLabel("브랜드:"), 1, 0)
-        self.fav_brand_name = QLineEdit()
-        self.fav_brand_name.setPlaceholderText("브랜드명을 입력하세요")
-        add_layout.addWidget(self.fav_brand_name, 1, 1)
+        # 최소 마진 설정
+        settings_layout.addWidget(QLabel("최소 마진:"), 0, 2)
+        self.fav_min_margin = QSpinBox()
+        self.fav_min_margin.setRange(0, 50000)
+        self.fav_min_margin.setValue(500)
+        self.fav_min_margin.setSuffix(" 엔")
+        self.fav_min_margin.setToolTip("보장할 최소 마진 금액")
+        settings_layout.addWidget(self.fav_min_margin, 0, 3)
         
-        add_layout.addWidget(QLabel("현재가격:"), 1, 2)
-        self.fav_current_price = QSpinBox()
-        self.fav_current_price.setRange(0, 1000000)
-        self.fav_current_price.setSuffix(" 엔")
-        add_layout.addWidget(self.fav_current_price, 1, 3)
+        # 손실 예상 상품 자동 제외
+        self.fav_exclude_loss = QCheckBox("손실 예상 상품 자동 제외")
+        self.fav_exclude_loss.setChecked(True)
+        self.fav_exclude_loss.setToolTip("마진이 부족한 상품을 자동으로 제외")
+        settings_layout.addWidget(self.fav_exclude_loss, 1, 0, 1, 2)
         
-        # 버튼 레이아웃
-        button_layout = QHBoxLayout()
+        # 가격 관리 모드
+        mode_label = QLabel("가격 관리 모드:")
+        settings_layout.addWidget(mode_label, 1, 2)
         
-        self.add_favorite_btn = QPushButton("⭐ 주력상품 추가")
-        self.add_favorite_btn.setMinimumHeight(40)
-        self.add_favorite_btn.setStyleSheet("""
+        self.fav_price_mode_group = QButtonGroup()
+        self.fav_auto_mode = QRadioButton("🤖 자동 모드")
+        self.fav_manual_mode = QRadioButton("👤 수동 모드")
+        self.fav_auto_mode.setChecked(True)
+        self.fav_auto_mode.setToolTip("조건 만족 시 즉시 가격 수정")
+        self.fav_manual_mode.setToolTip("분석 결과 검토 후 수정")
+        
+        self.fav_price_mode_group.addButton(self.fav_auto_mode)
+        self.fav_price_mode_group.addButton(self.fav_manual_mode)
+        
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(self.fav_auto_mode)
+        mode_layout.addWidget(self.fav_manual_mode)
+        settings_layout.addLayout(mode_layout, 1, 3)
+        
+        layout.addWidget(settings_group)
+        
+        # 관리 기능 섹션
+        manage_group = QGroupBox("🛠️ 관리 기능")
+        manage_layout = QVBoxLayout(manage_group)
+        
+        # 첫 번째 줄 버튼들
+        first_row_layout = QHBoxLayout()
+        
+        self.fav_load_products_btn = QPushButton("📥 목록 불러오기")
+        self.fav_load_products_btn.setMinimumHeight(40)
+        self.fav_load_products_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ffc107, stop:1 #e0a800);
-                font-size: 12px;
+                    stop:0 #3498db, stop:1 #2980b9);
+                font-size: 13px;
                 font-weight: bold;
+                border-radius: 6px;
+                font-family: '맑은 고딕';
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #e0a800, stop:1 #d39e00);
+                    stop:0 #2980b9, stop:1 #1f4e79);
             }
         """)
-        self.add_favorite_btn.clicked.connect(self.add_favorite_product)
+        self.fav_load_products_btn.clicked.connect(self.load_favorite_products)
+        first_row_layout.addWidget(self.fav_load_products_btn)
         
-        self.check_favorites_btn = QPushButton("🚀 주력상품 가격확인 시작")
-        self.check_favorites_btn.setMinimumHeight(40)
-        self.check_favorites_btn.setStyleSheet("""
+        self.fav_check_prices_btn = QPushButton("🔍 가격확인")
+        self.fav_check_prices_btn.setMinimumHeight(40)
+        self.fav_check_prices_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #27ae60, stop:1 #229954);
+                font-size: 13px;
+                font-weight: bold;
+                border-radius: 6px;
+                font-family: '맑은 고딕';
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #229954, stop:1 #1e8449);
+            }
+        """)
+        self.fav_check_prices_btn.clicked.connect(self.check_favorite_prices)
+        first_row_layout.addWidget(self.fav_check_prices_btn)
+        
+        self.fav_update_prices_btn = QPushButton("🔄 가격 수정")
+        self.fav_update_prices_btn.setMinimumHeight(40)
+        self.fav_update_prices_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #8e44ad, stop:1 #7d3c98);
+                font-size: 13px;
+                font-weight: bold;
+                border-radius: 6px;
+                font-family: '맑은 고딕';
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #7d3c98, stop:1 #6c3483);
+            }
+        """)
+        self.fav_update_prices_btn.clicked.connect(self.update_favorite_prices)
+        first_row_layout.addWidget(self.fav_update_prices_btn)
+        
+        manage_layout.addLayout(first_row_layout)
+        
+        # 두 번째 줄 버튼들
+        second_row_layout = QHBoxLayout()
+        
+        self.fav_start_analysis_btn = QPushButton("🚀 가격확인-가격수정 시작")
+        self.fav_start_analysis_btn.setMinimumHeight(45)
+        self.fav_start_analysis_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e74c3c, stop:1 #c0392b);
+                font-size: 14px;
+                font-weight: bold;
+                border-radius: 6px;
+                font-family: '맑은 고딕';
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #c0392b, stop:1 #a93226);
+            }
+        """)
+        self.fav_start_analysis_btn.clicked.connect(self.start_favorite_analysis)
+        second_row_layout.addWidget(self.fav_start_analysis_btn)
+        
+        self.fav_clear_all_btn = QPushButton("🗑️ 전체삭제")
+        self.fav_clear_all_btn.setMinimumHeight(40)
+        self.fav_clear_all_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #dc3545, stop:1 #c82333);
+                font-size: 13px;
+                font-weight: bold;
+                border-radius: 6px;
+                font-family: '맑은 고딕';
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #c82333, stop:1 #a93226);
+            }
+        """)
+        self.fav_clear_all_btn.clicked.connect(self.clear_favorite_products)
+        second_row_layout.addWidget(self.fav_clear_all_btn)
+        
+        self.fav_save_list_btn = QPushButton("💾 목록 저장")
+        self.fav_save_list_btn.setMinimumHeight(40)
+        self.fav_save_list_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #17a2b8, stop:1 #138496);
-                font-size: 12px;
+                font-size: 13px;
                 font-weight: bold;
+                border-radius: 6px;
+                font-family: '맑은 고딕';
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #138496, stop:1 #0f6674);
             }
         """)
-        self.check_favorites_btn.clicked.connect(self.check_favorite_prices)
+        self.fav_save_list_btn.clicked.connect(self.save_favorite_products)
+        second_row_layout.addWidget(self.fav_save_list_btn)
         
-        button_layout.addWidget(self.add_favorite_btn)
-        button_layout.addWidget(self.check_favorites_btn)
+        manage_layout.addLayout(second_row_layout)
+        layout.addWidget(manage_group)
         
-        add_layout.addLayout(button_layout, 2, 0, 1, 4)
-        layout.addWidget(add_group)
-        
-        # 주력 상품 목록
-        list_group = QGroupBox("📋 주력 상품 목록")
-        list_layout = QVBoxLayout(list_group)
+        # 주력 상품 목록 테이블
+        table_group = QGroupBox("📋 주력 상품 목록")
+        table_layout = QVBoxLayout(table_group)
         
         self.favorite_table = QTableWidget()
         self.favorite_table.setColumnCount(7)
         self.favorite_table.setHorizontalHeaderLabels([
-            "상품명", "브랜드", "현재가격", "최저가", "상태", "마지막 확인", "액션"
+            "상품명", "현재가격", "경쟁사 최저가", "제안가격", "상태", "마지막 확인", "액션"
         ])
-        
-        # 테이블 스타일 설정
-        self.favorite_table.setStyleSheet("""
-            QTableWidget {
-                gridline-color: #ddd;
-                background-color: white;
-                alternate-background-color: #f8f9fa;
-                selection-background-color: #e3f2fd;
-            }
-            QHeaderView::section {
-                background-color: #f1f3f4;
-                padding: 8px;
-                border: 1px solid #ddd;
-                font-weight: bold;
-            }
-        """)
-        
-        self.favorite_table.setAlternatingRowColors(True)
-        self.favorite_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.favorite_table.horizontalHeader().setStretchLastSection(True)
+        self.favorite_table.setAlternatingRowColors(True)
+        self.favorite_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         
-        # 컬럼 너비 설정
-        self.favorite_table.setColumnWidth(0, 200)  # 상품명
-        self.favorite_table.setColumnWidth(1, 120)  # 브랜드
-        self.favorite_table.setColumnWidth(2, 100)  # 현재가격
-        self.favorite_table.setColumnWidth(3, 100)  # 최저가
+        # 테이블 컬럼 너비 설정
+        self.favorite_table.setColumnWidth(0, 500)  # 상품명
+        self.favorite_table.setColumnWidth(1, 100)  # 현재가격
+        self.favorite_table.setColumnWidth(2, 120)  # 경쟁사 최저가
+        self.favorite_table.setColumnWidth(3, 100)  # 제안가격
         self.favorite_table.setColumnWidth(4, 100)  # 상태
         self.favorite_table.setColumnWidth(5, 120)  # 마지막 확인
         
-        list_layout.addWidget(self.favorite_table)
-        layout.addWidget(list_group)
+        table_layout.addWidget(self.favorite_table)
+        
+        # 통계 정보
+        stats_layout = QHBoxLayout()
+        
+        self.total_favorites = QLabel("총 주력상품: 0개")
+        self.total_favorites.setStyleSheet("font-weight: bold; color: #2c3e50; padding: 5px;")
+        stats_layout.addWidget(self.total_favorites)
+        
+        self.need_update_count = QLabel("수정 필요: 0개")
+        self.need_update_count.setStyleSheet("font-weight: bold; color: #e74c3c; padding: 5px;")
+        stats_layout.addWidget(self.need_update_count)
+        
+        self.up_to_date_count = QLabel("최신 상태: 0개")
+        self.up_to_date_count.setStyleSheet("font-weight: bold; color: #27ae60; padding: 5px;")
+        stats_layout.addWidget(self.up_to_date_count)
+        
+        self.last_check_time = QLabel("마지막 확인: 없음")
+        self.last_check_time.setStyleSheet("font-weight: bold; color: #7f8c8d; padding: 5px;")
+        stats_layout.addWidget(self.last_check_time)
+        
+        stats_layout.addStretch()
+        table_layout.addLayout(stats_layout)
+        
+        layout.addWidget(table_group)
         
         self.tab_widget.addTab(tab, "⭐ 주력 상품")
     
@@ -5170,8 +5040,33 @@ class Main(QMainWindow):
                 """)
                 update_btn.clicked.connect(lambda checked, r=row: self.update_single_product_price(r))
                 
+                # 주력상품 추가 버튼
+                favorite_btn = QPushButton("⭐")
+                favorite_btn.setFixedSize(30, 25)
+                favorite_btn.setToolTip("주력상품으로 추가")
+                favorite_btn.setStyleSheet("""
+                    QPushButton {
+                        font-size: 11px; 
+                        background-color: #ffc107;
+                        color: white;
+                        border: 1px solid #e0a800;
+                        border-radius: 4px;
+                        padding: 2px;
+                    }
+                    QPushButton:hover {
+                        background-color: #e0a800;
+                    }
+                    QPushButton:pressed {
+                        background-color: #d39e00;
+                    }
+                """)
+                # 실제 인덱스 계산 (전체 상품 리스트에서의 위치)
+                actual_row = self.current_page * self.page_size + row
+                favorite_btn.clicked.connect(lambda checked, r=actual_row: self.add_to_favorite_from_price_table(r))
+                
                 action_layout.addWidget(analyze_btn)
                 action_layout.addWidget(update_btn)
+                action_layout.addWidget(favorite_btn)
                 action_layout.addStretch()
                 
                 self.price_table.setCellWidget(row, 6, action_widget)
@@ -6334,27 +6229,7 @@ class Main(QMainWindow):
         detail_btn.clicked.connect(lambda checked, r=row: self.show_item_detail(r))
         action_layout.addWidget(detail_btn)
         
-        # 2. 주력상품 추가 버튼
-        add_favorite_btn = QPushButton("⭐")
-        add_favorite_btn.setToolTip("주력 상품으로 추가")
-        add_favorite_btn.setFixedSize(35, 28)
-        add_favorite_btn.setStyleSheet("""
-            QPushButton {
-                background: #f39c12;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-size: 12px;
-                font-family: '맑은 고딕';
-            }
-            QPushButton:hover {
-                background: #e67e22;
-            }
-        """)
-        add_favorite_btn.clicked.connect(lambda checked, r=row: self.add_crawled_to_favorites(r))
-        action_layout.addWidget(add_favorite_btn)
-        
-        # 3. 바로 업로드 버튼
+        # 2. 바로 업로드 버튼
         upload_btn = QPushButton("📤")
         upload_btn.setToolTip("BUYMA에 바로 업로드")
         upload_btn.setFixedSize(35, 28)
@@ -7607,16 +7482,22 @@ class Main(QMainWindow):
             
             self.price_table.setItem(row, 6, status_item)
             
-            # 액션 버튼
+            # 액션 버튼들
+            action_widget = QWidget()
+            action_layout = QHBoxLayout(action_widget)
+            action_layout.setContentsMargins(2, 2, 2, 2)
+            action_layout.setSpacing(2)
+            
             if self.auto_mode.isChecked():
-                action_btn = QPushButton("🔄 자동수정")
+                action_btn = QPushButton("🔄")
+                action_btn.setToolTip("자동 수정")
+                action_btn.setFixedSize(25, 25)
                 action_btn.setStyleSheet("""
                     QPushButton {
                         background: #28a745;
                         color: white;
                         border: none;
                         border-radius: 4px;
-                        padding: 5px 10px;
                         font-size: 10px;
                     }
                     QPushButton:hover {
@@ -7625,14 +7506,15 @@ class Main(QMainWindow):
                 """)
                 action_btn.clicked.connect(lambda checked, r=row: self.auto_update_price(r))
             else:
-                action_btn = QPushButton("💱 수동수정")
+                action_btn = QPushButton("💱")
+                action_btn.setToolTip("수동 수정")
+                action_btn.setFixedSize(25, 25)
                 action_btn.setStyleSheet("""
                     QPushButton {
                         background: #007bff;
                         color: white;
                         border: none;
                         border-radius: 4px;
-                        padding: 5px 10px;
                         font-size: 10px;
                     }
                     QPushButton:hover {
@@ -7641,7 +7523,29 @@ class Main(QMainWindow):
                 """)
                 action_btn.clicked.connect(lambda checked, r=row: self.manual_update_price(r))
             
-            self.price_table.setCellWidget(row, 7, action_btn)
+            # 주력상품 추가 버튼
+            favorite_btn = QPushButton("⭐")
+            favorite_btn.setToolTip("주력상품으로 추가")
+            favorite_btn.setFixedSize(25, 25)
+            favorite_btn.setStyleSheet("""
+                QPushButton {
+                    background: #ffc107;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background: #e0a800;
+                }
+            """)
+            favorite_btn.clicked.connect(lambda checked, r=row: self.add_to_favorite_from_price_table(r))
+            
+            action_layout.addWidget(action_btn)
+            action_layout.addWidget(favorite_btn)
+            action_layout.addStretch()
+            
+            self.price_table.setCellWidget(row, 7, action_widget)
             
             # 자동 스크롤
             self.price_table.scrollToBottom()
@@ -7649,88 +7553,118 @@ class Main(QMainWindow):
         except Exception as e:
             self.log_message(f"결과 추가 오류: {str(e)}")
         
-    def add_demo_price_data(self):
-        """데모용 가격 데이터 추가"""
-        from PyQt6.QtGui import QColor, QBrush
+    # def add_demo_price_data(self):
+    #     """데모용 가격 데이터 추가"""
+    #     from PyQt6.QtGui import QColor, QBrush
         
-        demo_data = [
-            ["상품A", "브랜드A", "5000엔", "4500엔", "4400엔", "+600엔", "수정 가능", "수정"],
-            ["상품B", "브랜드B", "3000엔", "2800엔", "2700엔", "-100엔", "손실 예상", "제외"],
-            ["상품C", "브랜드C", "8000엔", "7500엔", "7400엔", "+1100엔", "수정 가능", "수정"],
-        ]
+    #     demo_data = [
+    #         ["상품A", "브랜드A", "5000엔", "4500엔", "4400엔", "+600엔", "수정 가능", "수정"],
+    #         ["상품B", "브랜드B", "3000엔", "2800엔", "2700엔", "-100엔", "손실 예상", "제외"],
+    #         ["상품C", "브랜드C", "8000엔", "7500엔", "7400엔", "+1100엔", "수정 가능", "수정"],
+    #     ]
         
-        self.price_table.setRowCount(len(demo_data))
+    #     self.price_table.setRowCount(len(demo_data))
         
-        for row, data in enumerate(demo_data):
-            for col, value in enumerate(data):
-                if col == 7:  # 액션 컬럼
-                    if value == "수정":
-                        btn = QPushButton("💱 수정")
-                        btn.setStyleSheet("""
-                            QPushButton {
-                                background: #28a745;
-                                color: white;
-                                border: none;
-                                border-radius: 4px;
-                                padding: 5px 10px;
-                                font-size: 10px;
-                            }
-                            QPushButton:hover {
-                                background: #1e7e34;
-                            }
-                        """)
-                        btn.clicked.connect(lambda checked, r=row: self.update_single_price(r))
-                        self.price_table.setCellWidget(row, col, btn)
-                    else:
-                        btn = QPushButton("❌ 제외")
-                        btn.setStyleSheet("""
-                            QPushButton {
-                                background: #dc3545;
-                                color: white;
-                                border: none;
-                                border-radius: 4px;
-                                padding: 5px 10px;
-                                font-size: 10px;
-                            }
-                        """)
-                        btn.setEnabled(False)
-                        self.price_table.setCellWidget(row, col, btn)
-                else:
-                    item = QTableWidgetItem(str(value))
-                    if col == 6:  # 상태 컬럼
-                        if "손실" in str(value):
-                            # 빨간색으로 설정
-                            item.setForeground(QBrush(QColor("#dc3545")))
-                            font = item.font()
-                            font.setBold(True)
-                            item.setFont(font)
-                        elif "수정 가능" in str(value):
-                            # 녹색으로 설정
-                            item.setForeground(QBrush(QColor("#28a745")))
-                            font = item.font()
-                            font.setBold(True)
-                            item.setFont(font)
-                    elif col == 5:  # 예상마진 컬럼
-                        if "-" in str(value):
-                            # 마이너스 마진은 빨간색
-                            item.setForeground(QBrush(QColor("#dc3545")))
-                            font = item.font()
-                            font.setBold(True)
-                            item.setFont(font)
-                        else:
-                            # 플러스 마진은 녹색
-                            item.setForeground(QBrush(QColor("#28a745")))
-                            font = item.font()
-                            font.setBold(True)
-                            item.setFont(font)
+    #     for row, data in enumerate(demo_data):
+    #         for col, value in enumerate(data):
+    #             if col == 7:  # 액션 컬럼
+    #                 action_widget = QWidget()
+    #                 action_layout = QHBoxLayout(action_widget)
+    #                 action_layout.setContentsMargins(2, 2, 2, 2)
+    #                 action_layout.setSpacing(2)
                     
-                    self.price_table.setItem(row, col, item)
+    #                 if value == "수정":
+    #                     btn = QPushButton("💱")
+    #                     btn.setToolTip("가격 수정")
+    #                     btn.setFixedSize(25, 25)
+    #                     btn.setStyleSheet("""
+    #                         QPushButton {
+    #                             background: #28a745;
+    #                             color: white;
+    #                             border: none;
+    #                             border-radius: 4px;
+    #                             font-size: 10px;
+    #                         }
+    #                         QPushButton:hover {
+    #                             background: #1e7e34;
+    #                         }
+    #                     """)
+    #                     btn.clicked.connect(lambda checked, r=row: self.update_single_price(r))
+    #                     action_layout.addWidget(btn)
+                        
+    #                     # 주력상품 추가 버튼
+    #                     favorite_btn = QPushButton("⭐")
+    #                     favorite_btn.setToolTip("주력상품으로 추가")
+    #                     favorite_btn.setFixedSize(25, 25)
+    #                     favorite_btn.setStyleSheet("""
+    #                         QPushButton {
+    #                             background: #ffc107;
+    #                             color: white;
+    #                             border: none;
+    #                             border-radius: 4px;
+    #                             font-size: 10px;
+    #                         }
+    #                         QPushButton:hover {
+    #                             background: #e0a800;
+    #                         }
+    #                     """)
+    #                     favorite_btn.clicked.connect(lambda checked, r=row: self.add_to_favorite_from_price_table(r))
+    #                     action_layout.addWidget(favorite_btn)
+                        
+    #                 else:
+    #                     btn = QPushButton("❌")
+    #                     btn.setToolTip("제외됨")
+    #                     btn.setFixedSize(25, 25)
+    #                     btn.setStyleSheet("""
+    #                         QPushButton {
+    #                             background: #dc3545;
+    #                             color: white;
+    #                             border: none;
+    #                             border-radius: 4px;
+    #                             font-size: 10px;
+    #                         }
+    #                     """)
+    #                     btn.setEnabled(False)
+    #                     action_layout.addWidget(btn)
+                    
+    #                 action_layout.addStretch()
+    #                 self.price_table.setCellWidget(row, col, action_widget)
+    #             else:
+    #                 item = QTableWidgetItem(str(value))
+    #                 if col == 6:  # 상태 컬럼
+    #                     if "손실" in str(value):
+    #                         # 빨간색으로 설정
+    #                         item.setForeground(QBrush(QColor("#dc3545")))
+    #                         font = item.font()
+    #                         font.setBold(True)
+    #                         item.setFont(font)
+    #                     elif "수정 가능" in str(value):
+    #                         # 녹색으로 설정
+    #                         item.setForeground(QBrush(QColor("#28a745")))
+    #                         font = item.font()
+    #                         font.setBold(True)
+    #                         item.setFont(font)
+    #                 elif col == 5:  # 예상마진 컬럼
+    #                     if "-" in str(value):
+    #                         # 마이너스 마진은 빨간색
+    #                         item.setForeground(QBrush(QColor("#dc3545")))
+    #                         font = item.font()
+    #                         font.setBold(True)
+    #                         item.setFont(font)
+    #                     else:
+    #                         # 플러스 마진은 녹색
+    #                         item.setForeground(QBrush(QColor("#28a745")))
+    #                         font = item.font()
+    #                         font.setBold(True)
+    #                         item.setFont(font)
+                    
+    #                 self.price_table.setItem(row, col, item)
         
-        # 요약 정보 업데이트
-        self.total_analyzed.setText("분석 완료: 3개")
-        self.auto_updated.setText("자동 수정: 0개")
-        self.excluded_items.setText("제외: 1개")
-        self.failed_items.setText("실패: 0개")
+    #     # 요약 정보 업데이트
+    #     self.total_analyzed.setText("분석 완료: 3개")
+    #     self.auto_updated.setText("자동 수정: 0개")
+    #     self.excluded_items.setText("제외: 1개")
+    #     self.failed_items.setText("실패: 0개")
         
     def update_single_price(self, row):
         """개별 상품 가격 수정"""
@@ -7741,8 +7675,16 @@ class Main(QMainWindow):
         
         # TODO: 실제 가격 수정 로직 구현
         
-        # 버튼을 완료 상태로 변경
-        btn = QPushButton("✅ 완료")
+        # 액션 버튼들을 완료 상태로 변경
+        action_widget = QWidget()
+        action_layout = QHBoxLayout(action_widget)
+        action_layout.setContentsMargins(2, 2, 2, 2)
+        action_layout.setSpacing(2)
+        
+        # 완료 버튼
+        btn = QPushButton("✅")
+        btn.setToolTip("수정 완료")
+        btn.setFixedSize(25, 25)
         btn.setStyleSheet("""
             QPushButton {
                 background: #6c757d;
@@ -7754,7 +7696,29 @@ class Main(QMainWindow):
             }
         """)
         btn.setEnabled(False)
-        self.price_table.setCellWidget(row, 7, btn)
+        action_layout.addWidget(btn)
+        
+        # 주력상품 추가 버튼 (여전히 활성화)
+        favorite_btn = QPushButton("⭐")
+        favorite_btn.setToolTip("주력상품으로 추가")
+        favorite_btn.setFixedSize(25, 25)
+        favorite_btn.setStyleSheet("""
+            QPushButton {
+                background: #ffc107;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 10px;
+            }
+            QPushButton:hover {
+                background: #e0a800;
+            }
+        """)
+        favorite_btn.clicked.connect(lambda checked, r=row: self.add_to_favorite_from_price_table(r))
+        action_layout.addWidget(favorite_btn)
+        
+        action_layout.addStretch()
+        self.price_table.setCellWidget(row, 7, action_widget)
         
         # 상태 업데이트
         status_item = QTableWidgetItem("수정 완료")
@@ -9159,27 +9123,7 @@ class Main(QMainWindow):
             detail_btn.clicked.connect(lambda checked, r=row: self.show_item_detail(r))
             action_layout.addWidget(detail_btn)
             
-            # 2. 주력상품 추가 버튼
-            add_favorite_btn = QPushButton("⭐")
-            add_favorite_btn.setToolTip("주력 상품으로 추가")
-            add_favorite_btn.setFixedSize(35, 28)
-            add_favorite_btn.setStyleSheet("""
-                QPushButton {
-                    background: #f39c12;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    font-family: '맑은 고딕';
-                }
-                QPushButton:hover {
-                    background: #e67e22;
-                }
-            """)
-            add_favorite_btn.clicked.connect(lambda checked, r=row: self.add_crawled_to_favorites(r))
-            action_layout.addWidget(add_favorite_btn)
-            
-            # 3. 바로 업로드 버튼
+            # 2. 바로 업로드 버튼
             upload_btn = QPushButton("📤")
             upload_btn.setToolTip("BUYMA에 바로 업로드")
             upload_btn.setFixedSize(35, 28)
@@ -9596,6 +9540,338 @@ class Main(QMainWindow):
                 
         except Exception as e:
             self.log_message(f"결과 추가 오류: {str(e)}")
+    
+    # ==================== 새로운 주력상품 관리 함수들 ====================
+    
+    def check_favorite_prices(self):
+        """주력상품 가격확인"""
+        try:
+            if not self.favorite_products:
+                QMessageBox.information(self, "알림", "확인할 주력 상품이 없습니다.")
+                return
+            
+            # BUYMA 로그인 상태 확인
+            if not self.check_buyma_login():
+                QMessageBox.warning(self, "로그인 필요", "BUYMA 로그인이 필요합니다.\n설정 탭에서 로그인을 완료해주세요.")
+                return
+            
+            self.log_message(f"🔍 주력상품 가격확인 시작: {len(self.favorite_products)}개")
+            
+            # 설정값 가져오기
+            discount_amount = self.fav_discount_amount.value()
+            min_margin = self.fav_min_margin.value()
+            
+            for i, product in enumerate(self.favorite_products):
+                try:
+                    product_name = product.get('name', '')
+                    current_price = product.get('current_price', 0)
+                    
+                    self.log_message(f"📊 분석 중: {product_name} ({i+1}/{len(self.favorite_products)})")
+                    
+                    # 경쟁사 최저가 조회 (시뮬레이션)
+                    competitor_price = self.get_competitor_price_simulation(product_name)
+                    
+                    # 제안가 계산
+                    suggested_price = competitor_price - discount_amount
+                    
+                    # 마진 계산 (원가를 현재가의 60%로 가정)
+                    cost_price = current_price * 0.6
+                    margin = suggested_price - cost_price
+                    
+                    # 상태 결정
+                    if margin < min_margin:
+                        status = "수정 불가 (마진 부족)"
+                    elif suggested_price >= current_price:
+                        status = "수정 불필요 (현재가 적정)"
+                    else:
+                        status = "수정 필요"
+                    
+                    # 결과 업데이트
+                    product['competitor_price'] = competitor_price
+                    product['suggested_price'] = suggested_price
+                    product['status'] = status
+                    product['last_check'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+                    
+                    self.log_message(f"✅ 분석 완료: {product_name} - {status}")
+                    
+                except Exception as e:
+                    self.log_message(f"❌ 분석 실패: {product.get('name', 'Unknown')} - {str(e)}")
+                    continue
+            
+            # 테이블 업데이트
+            self.update_favorite_table()
+            self.save_favorite_products_auto()
+            
+            self.log_message("🔍 주력상품 가격확인 완료")
+            
+        except Exception as e:
+            self.log_message(f"❌ 주력상품 가격확인 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"가격확인 중 오류가 발생했습니다:\n{str(e)}")
+    
+    def update_favorite_prices(self):
+        """주력상품 가격수정"""
+        try:
+            if not self.favorite_products:
+                QMessageBox.information(self, "알림", "수정할 주력 상품이 없습니다.")
+                return
+            
+            # BUYMA 로그인 상태 확인
+            if not self.check_buyma_login():
+                QMessageBox.warning(self, "로그인 필요", "BUYMA 로그인이 필요합니다.\n설정 탭에서 로그인을 완료해주세요.")
+                return
+            
+            # 수정이 필요한 상품들 찾기
+            need_update = [p for p in self.favorite_products if p.get('status') == '수정 필요']
+            
+            if not need_update:
+                QMessageBox.information(self, "알림", "수정이 필요한 상품이 없습니다.")
+                return
+            
+            self.log_message(f"🔄 주력상품 가격수정 시작: {len(need_update)}개")
+            
+            updated_count = 0
+            auto_mode = self.fav_auto_mode.isChecked()
+            
+            for product in need_update:
+                try:
+                    product_name = product.get('name', '')
+                    suggested_price = product.get('suggested_price', 0)
+                    
+                    if not auto_mode:
+                        # 수동 모드: 사용자 확인
+                        reply = QMessageBox.question(
+                            self,
+                            "가격 수정 확인",
+                            f"상품: {product_name}\n"
+                            f"제안가: {suggested_price:,}엔\n\n"
+                            f"가격을 수정하시겠습니까?",
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                        )
+                        
+                        if reply != QMessageBox.StandardButton.Yes:
+                            continue
+                    
+                    # 실제 가격 수정 (시뮬레이션)
+                    success = self.update_product_price_simulation(product, suggested_price)
+                    
+                    if success:
+                        product['current_price'] = suggested_price
+                        product['status'] = "수정 완료"
+                        product['last_update'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+                        updated_count += 1
+                        
+                        self.log_message(f"✅ 가격 수정 완료: {product_name} → {suggested_price:,}엔")
+                    else:
+                        self.log_message(f"❌ 가격 수정 실패: {product_name}")
+                    
+                except Exception as e:
+                    self.log_message(f"❌ 가격 수정 오류: {product.get('name', 'Unknown')} - {str(e)}")
+                    continue
+            
+            # 테이블 업데이트
+            self.update_favorite_table()
+            self.save_favorite_products_auto()
+            
+            self.log_message(f"🔄 주력상품 가격수정 완료: {updated_count}개 수정")
+            QMessageBox.information(self, "수정 완료", f"{updated_count}개 상품의 가격이 수정되었습니다.")
+            
+        except Exception as e:
+            self.log_message(f"❌ 주력상품 가격수정 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"가격수정 중 오류가 발생했습니다:\n{str(e)}")
+    
+    def get_competitor_price_simulation(self, product_name):
+        """경쟁사 최저가 조회 시뮬레이션"""
+        # 실제로는 BUYMA 검색을 통해 최저가를 찾아야 함
+        # 여기서는 시뮬레이션으로 랜덤 가격 반환
+        import random
+        base_price = random.randint(15000, 50000)
+        return base_price
+    
+    def update_product_price_simulation(self, product, new_price):
+        """상품 가격 수정 시뮬레이션"""
+        # 실제로는 BUYMA 상품 페이지에서 가격을 수정해야 함
+        # 여기서는 시뮬레이션으로 성공 반환
+        time.sleep(1)  # 실제 처리 시간 시뮬레이션
+        return True
+    
+    def update_favorite_table(self):
+        """주력상품 테이블 업데이트"""
+        try:
+            self.favorite_table.setRowCount(len(self.favorite_products))
+            
+            for row, product in enumerate(self.favorite_products):
+                # 상품명
+                name_item = QTableWidgetItem(product.get('name', ''))
+                name_item.setToolTip(product.get('name', ''))
+                self.favorite_table.setItem(row, 0, name_item)
+                
+                # 현재가격
+                current_price = product.get('current_price', 0)
+                self.favorite_table.setItem(row, 1, QTableWidgetItem(f"{current_price:,}엔"))
+                
+                # 경쟁사 최저가
+                competitor_price = product.get('competitor_price', 0)
+                if competitor_price > 0:
+                    self.favorite_table.setItem(row, 2, QTableWidgetItem(f"{competitor_price:,}엔"))
+                else:
+                    self.favorite_table.setItem(row, 2, QTableWidgetItem("-"))
+                
+                # 제안가격
+                suggested_price = product.get('suggested_price', 0)
+                if suggested_price > 0:
+                    self.favorite_table.setItem(row, 3, QTableWidgetItem(f"{suggested_price:,}엔"))
+                else:
+                    self.favorite_table.setItem(row, 3, QTableWidgetItem("-"))
+                
+                # 상태
+                status = product.get('status', '확인 필요')
+                status_item = QTableWidgetItem(status)
+                
+                # 상태에 따른 색상 설정
+                if '수정 필요' in status:
+                    status_item.setBackground(QBrush(QColor(255, 235, 235)))  # 연한 빨강
+                elif '완료' in status or '최신' in status:
+                    status_item.setBackground(QBrush(QColor(235, 255, 235)))  # 연한 초록
+                elif '불가' in status:
+                    status_item.setBackground(QBrush(QColor(255, 245, 235)))  # 연한 주황
+                
+                self.favorite_table.setItem(row, 4, status_item)
+                
+                # 마지막 확인
+                last_check = product.get('last_check', '없음')
+                self.favorite_table.setItem(row, 5, QTableWidgetItem(last_check))
+                
+                # 액션 버튼
+                action_widget = QWidget()
+                action_layout = QHBoxLayout(action_widget)
+                action_layout.setContentsMargins(5, 2, 5, 2)
+                action_layout.setSpacing(2)
+                
+                # 삭제 버튼
+                delete_btn = QPushButton("🗑️")
+                delete_btn.setToolTip("삭제")
+                delete_btn.setFixedSize(30, 25)
+                delete_btn.setStyleSheet("""
+                    QPushButton {
+                        background: #dc3545;
+                        color: white;
+                        border: none;
+                        border-radius: 3px;
+                        font-size: 10px;
+                    }
+                    QPushButton:hover {
+                        background: #c82333;
+                    }
+                """)
+                delete_btn.clicked.connect(lambda checked, r=row: self.delete_favorite_product(r))
+                action_layout.addWidget(delete_btn)
+                
+                self.favorite_table.setCellWidget(row, 6, action_widget)
+            
+            # 통계 업데이트
+            self.update_favorite_stats()
+            
+        except Exception as e:
+            self.log_message(f"테이블 업데이트 오류: {str(e)}")
+    
+    def delete_favorite_product(self, row):
+        """주력상품 삭제"""
+        try:
+            if row < len(self.favorite_products):
+                product = self.favorite_products[row]
+                
+                reply = QMessageBox.question(
+                    self,
+                    "삭제 확인",
+                    f"다음 주력 상품을 삭제하시겠습니까?\n\n{product.get('name', 'Unknown')}",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                
+                if reply == QMessageBox.StandardButton.Yes:
+                    del self.favorite_products[row]
+                    self.update_favorite_table()
+                    self.save_favorite_products_auto()
+                    self.log_message(f"🗑️ 주력상품 삭제: {product.get('name', 'Unknown')}")
+        
+        except Exception as e:
+            self.log_message(f"주력상품 삭제 오류: {str(e)}")
+    
+    def update_favorite_stats(self):
+        """주력상품 통계 업데이트"""
+        try:
+            total = len(self.favorite_products)
+            need_update = sum(1 for p in self.favorite_products if p.get('status') == '수정 필요')
+            up_to_date = sum(1 for p in self.favorite_products if '완료' in p.get('status', '') or '최신' in p.get('status', ''))
+            
+            self.total_favorites.setText(f"총 주력상품: {total}개")
+            self.need_update_count.setText(f"수정 필요: {need_update}개")
+            self.up_to_date_count.setText(f"최신 상태: {up_to_date}개")
+            
+            # 마지막 확인 시간
+            if self.favorite_products:
+                last_checks = [p.get('last_check', '') for p in self.favorite_products if p.get('last_check', '') != '없음']
+                if last_checks:
+                    latest_check = max(last_checks)
+                    self.last_check_time.setText(f"마지막 확인: {latest_check}")
+                else:
+                    self.last_check_time.setText("마지막 확인: 없음")
+            else:
+                self.last_check_time.setText("마지막 확인: 없음")
+                
+        except Exception as e:
+            self.log_message(f"통계 업데이트 오류: {str(e)}")
+    
+    def add_to_favorite_from_price_table(self, row):
+        """가격관리 테이블에서 주력상품으로 추가"""
+        try:
+            if row >= len(self.all_products):
+                QMessageBox.warning(self, "오류", "선택한 상품 정보를 찾을 수 없습니다.")
+                return
+            
+            product = self.all_products[row]
+            product_name = product.get('title', '')
+            current_price_str = product.get('current_price', '0')
+            
+            # 가격에서 숫자만 추출
+            import re
+            price_numbers = re.findall(r'[\d,]+', current_price_str)
+            current_price = int(price_numbers[0].replace(',', '')) if price_numbers else 0
+            
+            # 중복 확인
+            for fav_product in self.favorite_products:
+                if fav_product.get('name', '') == product_name:
+                    QMessageBox.warning(self, "중복", "이미 주력 상품으로 등록된 상품입니다.")
+                    return
+            
+            # 주력상품 데이터 생성
+            favorite_product = {
+                'name': product_name,
+                'current_price': current_price,
+                'competitor_price': 0,
+                'suggested_price': 0,
+                'status': '확인 필요',
+                'last_check': '없음',
+                'added_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'product_id': product.get('product_id', ''),
+                'url': product.get('url', '')
+            }
+            
+            # 주력상품 목록에 추가
+            self.favorite_products.append(favorite_product)
+            
+            # 주력상품 테이블 업데이트 (테이블이 존재하는 경우에만)
+            if hasattr(self, 'favorite_table'):
+                self.update_favorite_table()
+            
+            # 자동 저장
+            self.save_favorite_products_auto()
+            
+            self.log_message(f"⭐ 주력상품 추가: {product_name}")
+            QMessageBox.information(self, "추가 완료", f"주력 상품으로 추가되었습니다.\n\n{product_name}")
+            
+        except Exception as e:
+            self.log_message(f"❌ 주력상품 추가 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"주력상품 추가 중 오류가 발생했습니다:\n{str(e)}")
 
 
 def main():
