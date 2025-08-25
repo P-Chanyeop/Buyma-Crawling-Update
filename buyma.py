@@ -10832,13 +10832,22 @@ class Main(QMainWindow):
             else:
                 self.log_message(f"📝 크롤링된 색상 데이터가 없습니다.")
             
-            # 6. 배송방법, 구입기간, 가격 설정
+            # 6. 사이즈 추가 (크롤링된 사이즈 데이터가 있는 경우)
+            if 'sizes' in product_data and product_data['sizes']:
+                self.log_message(f"📏 사이즈 추가: {len(product_data['sizes'])}개")
+                result = self.add_product_sizes_real(product_data)
+                if not result:
+                    self.log_message(f"⚠️ 사이즈 추가 실패 (계속 진행)")
+            else:
+                self.log_message(f"📝 크롤링된 사이즈 데이터가 없습니다.")
+            
+            # 7. 배송방법, 구입기간, 가격 설정
             self.log_message(f"🚚 배송 및 상세 설정...")
             result = self.set_shipping_and_details_real(product_data)
             if not result:
                 return {'success': False, 'error': '배송 및 상세 설정 실패'}
             
-            # 7. 상품 등록 완료 (실제 등록은 주석 처리)
+            # 8. 상품 등록 완료 (실제 등록은 주석 처리)
             self.log_message(f"✅ 상품 정보 입력 완료")
             
             # 사용자 확인 메시지 (상세 다이얼로그)
@@ -11225,11 +11234,8 @@ class Main(QMainWindow):
             return False
     
     def add_product_colors_real(self, product_data):
-        """상품 색상 추가 - 크롤링된 데이터 기반"""
+        """상품 색상 추가 - 크롤링된 데이터 기반 (개선된 로직)"""
         try:
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
             import time
             
             # 크롤링된 색상 데이터 사용
@@ -11239,88 +11245,133 @@ class Main(QMainWindow):
                 self.log_message("📝 크롤링된 색상 데이터가 없습니다.")
                 return True
             
-            base_select_index = 4  # 첫 번째 색상 선택 박스 인덱스
-            base_input_index = 3   # 첫 번째 색상 이름 입력 인덱스
-            
             self.log_message(f"🎨 크롤링된 색상 추가 시작: {len(colors)}개 색상 - {colors}")
             
             for i, color in enumerate(colors):
                 try:
                     self.log_message(f"🎨 색상 {i + 1}/{len(colors)} 추가 중: {color}")
                     
-                    # 두 번째 색상부터 추가 버튼 클릭
-                    if i > 0:
-                        self.log_message(f"➕ 색상 추가 버튼 클릭 ({i + 1}번째 색상)")
-                        add_color_btn = WebDriverWait(self.shared_driver, 10).until(
-                            EC.element_to_be_clickable((By.CSS_SELECTOR, "div.bmm-c-form-table__foot > a"))
-                        )
+                    # 1. 색상 Select 박스 찾기 및 클릭
+                    find_color_control_script = """
+                    let colorControls = document.querySelectorAll('.Select .Select-control');
+                    let colorControl = null;
+                    
+                    for (let j = 0; j < colorControls.length; j++) {
+                        if (colorControls[j].innerText.includes("색상 지정 없음")) {
+                            colorControl = colorControls[j];
+                            break;
+                        }
+                    }
+                    
+                    if (colorControl) {
+                        colorControl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                        colorControl.click?.();
+                        console.log('색상 Select 박스 클릭 완료');
+                        return true;
+                    } else {
+                        console.warn('색상 Select-control을 찾지 못했습니다.');
+                        return false;
+                    }
+                    """
+                    
+                    result = self.shared_driver.execute_script(find_color_control_script)
+                    if not result:
+                        self.log_message(f"❌ 색상 Select 박스를 찾을 수 없습니다.")
+                        continue
+                    
+                    time.sleep(2)  # 드롭다운 열림 대기
+                    
+                    # 2. 색상 옵션 선택
+                    select_color_script = f"""
+                    function selectColorByText(text) {{
+                        const options = [...document.querySelectorAll('.Select-menu-outer .Select-option')];
+                        console.log('사용 가능한 색상 옵션들:', options.map(opt => opt.innerText.trim()));
+                        
+                        // 정확한 매칭 시도
+                        let target = options.find(opt => opt.innerText.trim() === text);
+                        
+                        // 부분 매칭 시도
+                        if (!target) {{
+                            target = options.find(opt => opt.innerText.trim().includes(text));
+                        }}
+                        
+                        // 색상 키워드 매칭 시도
+                        if (!target) {{
+                            const colorKeywords = {{
+                                'black': ['블랙', 'BLACK', '검정'],
+                                'white': ['화이트', 'WHITE', '흰색', '백색'],
+                                'red': ['레드', 'RED', '빨강', '적색'],
+                                'blue': ['블루', 'BLUE', '파랑', '청색'],
+                                'green': ['그린', 'GREEN', '초록', '녹색'],
+                                'yellow': ['옐로우', 'YELLOW', '노랑', '황색'],
+                                'pink': ['핑크', 'PINK', '분홍'],
+                                'gray': ['그레이', 'GRAY', '회색'],
+                                'brown': ['브라운', 'BROWN', '갈색'],
+                                'navy': ['네이비', 'NAVY', '남색']
+                            }};
+                            
+                            const textLower = text.toLowerCase();
+                            for (const [key, keywords] of Object.entries(colorKeywords)) {{
+                                if (keywords.some(keyword => textLower.includes(keyword.toLowerCase()))) {{
+                                    target = options.find(opt => {{
+                                        const optText = opt.innerText.trim().toLowerCase();
+                                        return keywords.some(keyword => optText.includes(keyword.toLowerCase()));
+                                    }});
+                                    if (target) break;
+                                }}
+                            }}
+                        }}
+                        
+                        if (target) {{
+                            target.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true }}));
+                            target.click?.();
+                            console.log('색상 선택됨: ' + target.innerText.trim());
+                            return true;
+                        }} else {{
+                            console.warn('색상 옵션을 찾지 못했습니다: ' + text);
+                            // 첫 번째 옵션 선택 (기본값)
+                            if (options.length > 0) {{
+                                options[0].dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true }}));
+                                options[0].click?.();
+                                console.log('기본 색상 선택: ' + options[0].innerText.trim());
+                                return true;
+                            }}
+                            return false;
+                        }}
+                    }}
+                    
+                    return selectColorByText('{color}');
+                    """
+                    
+                    color_result = self.shared_driver.execute_script(select_color_script)
+                    
+                    if color_result:
+                        self.log_message(f"✅ 색상 옵션 선택 완료: {color}")
+                        time.sleep(1)
+                    else:
+                        self.log_message(f"❌ 색상 옵션 선택 실패: {color}")
+                        continue
+                    
+                    # 3. 색상 이름 입력 (기존 로직 유지)
+                    text_inputs = self.shared_driver.find_elements(By.CSS_SELECTOR, "input.bmm-c-text-field")
+                    
+                    # 색상 이름 입력 필드 찾기 (인덱스 계산)
+                    color_input_index = 3 + i  # 기본 인덱스 3 + 색상 순서
+                    
+                    if len(text_inputs) > color_input_index:
+                        color_input = text_inputs[color_input_index]
+                        color_input.clear()
+                        color_input.send_keys(color)
+                        self.log_message(f"✅ 색상 이름 입력 완료: {color}")
+                    else:
+                        self.log_message(f"❌ 색상 이름 입력 필드를 찾을 수 없습니다 (인덱스: {color_input_index})")
+                    
+                    # 4. 다음 색상을 위한 추가 버튼 클릭 (마지막 색상이 아닌 경우)
+                    if i < len(colors) - 1:
+                        self.log_message(f"➕ 다음 색상을 위한 추가 버튼 클릭")
+                        add_color_btn = self.shared_driver.find_element(By.CSS_SELECTOR, "div.bmm-c-form-table__foot > a")
                         add_color_btn.click()
                         time.sleep(2)  # 새 색상 필드 로딩 대기
-                    
-                    # 색상 선택 박스 클릭 (인덱스는 i만큼 증가)
-                    current_select_index = base_select_index + i
-                    self.log_message(f"🎯 색상 선택 박스 클릭 (인덱스: {current_select_index})")
-                    
-                    select_controls = WebDriverWait(self.shared_driver, 10).until(
-                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.Select-control"))
-                    )
-                    
-                    if len(select_controls) <= current_select_index:
-                        self.log_message(f"❌ 색상 선택 박스를 찾을 수 없습니다 (인덱스: {current_select_index})")
-                        continue
-                    
-                    color_select = select_controls[current_select_index]
-                    color_select.click()
-                    time.sleep(1)
-                    
-                    # 색상 옵션 선택
-                    self.log_message(f"🔍 색상 옵션 검색 중: {color}")
-                    color_options = WebDriverWait(self.shared_driver, 10).until(
-                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.Select-option"))
-                    )
-                    
-                    # 색상과 일치하는 옵션 찾기
-                    color_found = False
-                    for option in color_options:
-                        option_text = option.text.strip().lower()
-                        color_lower = color.lower()
-                        
-                        # 색상명 매칭 (부분 일치 포함)
-                        if (color_lower in option_text or 
-                            option_text in color_lower or
-                            self.match_color_name(color_lower, option_text)):
-                            
-                            option.click()
-                            self.log_message(f"✅ 색상 옵션 선택: {option.text}")
-                            color_found = True
-                            time.sleep(1)
-                            break
-                    
-                    if not color_found:
-                        # 매칭되는 색상이 없으면 첫 번째 옵션 선택
-                        if color_options:
-                            color_options[0].click()
-                            self.log_message(f"⚠️ 기본 색상 선택: {color_options[0].text} ('{color}' 매칭 실패)")
-                            time.sleep(1)
-                        else:
-                            self.log_message(f"❌ 색상 옵션을 찾을 수 없습니다.")
-                            continue
-                    
-                    # 색상 이름 입력 (인덱스는 i만큼 증가)
-                    current_input_index = base_input_index + i
-                    self.log_message(f"📝 색상 이름 입력 (인덱스: {current_input_index}): {color}")
-                    
-                    text_inputs = WebDriverWait(self.shared_driver, 10).until(
-                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "input.bmm-c-text-field"))
-                    )
-                    
-                    if len(text_inputs) <= current_input_index:
-                        self.log_message(f"❌ 색상 이름 입력 필드를 찾을 수 없습니다 (인덱스: {current_input_index})")
-                        continue
-                    
-                    color_input = text_inputs[current_input_index]
-                    color_input.clear()
-                    color_input.send_keys(color)
                     
                     self.log_message(f"✅ 색상 {i + 1} 추가 완료: {color}")
                     time.sleep(1)
@@ -11334,6 +11385,153 @@ class Main(QMainWindow):
             
         except Exception as e:
             self.log_message(f"❌ 색상 추가 오류: {str(e)}")
+            return False
+    
+    def add_product_sizes_real(self, product_data):
+        """상품 사이즈 추가 - 크롤링된 데이터 기반"""
+        try:
+            import time
+            
+            # 크롤링된 사이즈 데이터 사용
+            sizes = product_data.get('sizes', [])
+            
+            if not sizes or len(sizes) == 0:
+                self.log_message("📝 크롤링된 사이즈 데이터가 없습니다.")
+                return True
+            
+            self.log_message(f"📏 크롤링된 사이즈 추가 시작: {len(sizes)}개 사이즈 - {sizes}")
+            
+            # 1. 사이즈 탭으로 이동
+            size_tab_script = """
+            const sizeTab = document.querySelector('li.sell-variation__tab-item[1]');
+            if (sizeTab) {
+                sizeTab.click();
+                console.log('사이즈 탭으로 이동 완료');
+                return true;
+            } else {
+                console.warn('사이즈 탭을 찾지 못했습니다.');
+                return false;
+            }
+            """
+            
+            tab_result = self.shared_driver.execute_script(size_tab_script)
+            if not tab_result:
+                self.log_message("❌ 사이즈 탭으로 이동할 수 없습니다.")
+                return False
+            
+            self.log_message("✅ 사이즈 탭으로 이동 완료")
+            time.sleep(2)  # 탭 로딩 대기
+            
+            # 2. 사이즈 Select 박스 찾기 및 클릭 (3번째 "선택해 주세요" 요소)
+            find_size_control_script = """
+            let sizeControls = document.querySelectorAll('.Select .Select-control');
+            let sizeControl = null;
+            let count = 0;
+            
+            for (let i = 0; i < sizeControls.length; i++) {
+                if (sizeControls[i].innerText.includes("선택해 주세요")) {
+                    sizeControl = sizeControls[i];
+                    
+                    if (count != 2) {
+                        count += 1;
+                        continue;
+                    }
+                    break;
+                }
+            }
+            
+            if (sizeControl) {
+                sizeControl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                sizeControl.click?.();
+                console.log('사이즈 Select 박스 클릭 완료');
+                return true;
+            } else {
+                console.warn('사이즈 Select-control을 찾지 못했습니다.');
+                return false;
+            }
+            """
+            
+            size_control_result = self.shared_driver.execute_script(find_size_control_script)
+            if not size_control_result:
+                self.log_message("❌ 사이즈 Select 박스를 찾을 수 없습니다.")
+                return False
+            
+            self.log_message("✅ 사이즈 Select 박스 클릭 완료")
+            time.sleep(2)  # 드롭다운 열림 대기
+            
+            # 3. "변형 있음" 옵션 선택
+            select_variation_script = """
+            function selectSizeByText(text) {
+                const options = [...document.querySelectorAll('.Select-menu-outer .Select-option')];
+                console.log('사용 가능한 사이즈 옵션들:', options.map(opt => opt.innerText.trim()));
+                
+                const target = options.find(opt => opt.innerText.trim().includes(text));
+                if (target) {
+                    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                    target.click?.();
+                    console.log('사이즈 1차 선택됨: ' + text);
+                    return true;
+                } else {
+                    console.warn('옵션을 찾지 못했습니다: ' + text);
+                    return false;
+                }
+            }
+            
+            return selectSizeByText('변형 있음');
+            """
+            
+            variation_result = self.shared_driver.execute_script(select_variation_script)
+            if not variation_result:
+                self.log_message("❌ '변형 있음' 옵션 선택 실패")
+                return False
+            
+            self.log_message("✅ '변형 있음' 옵션 선택 완료")
+            time.sleep(2)  # 변형 옵션 로딩 대기
+            
+            # 4. 각 사이즈 입력
+            for i, size in enumerate(sizes):
+                try:
+                    self.log_message(f"📏 사이즈 {i + 1}/{len(sizes)} 입력 중: {size}")
+                    
+                    # 사이즈 입력 필드 찾기 (인덱스 2부터 시작)
+                    size_input_index = 2 + i
+                    
+                    text_inputs = self.shared_driver.find_elements(By.CSS_SELECTOR, "input.bmm-c-text-field")
+                    
+                    if len(text_inputs) > size_input_index:
+                        size_input = text_inputs[size_input_index]
+                        size_input.clear()
+                        size_input.send_keys(size)
+                        self.log_message(f"✅ 사이즈 입력 완료 (인덱스 {size_input_index}): {size}")
+                    else:
+                        self.log_message(f"❌ 사이즈 입력 필드를 찾을 수 없습니다 (인덱스: {size_input_index})")
+                        continue
+                    
+                    # 다음 사이즈를 위한 추가 버튼 클릭 (마지막 사이즈가 아닌 경우)
+                    if i < len(sizes) - 1:
+                        self.log_message(f"➕ 다음 사이즈를 위한 추가 버튼 클릭")
+                        
+                        # div.bmm-c-form-table__foot의 첫 번째 a 태그 클릭
+                        add_size_btns = self.shared_driver.find_elements(By.CSS_SELECTOR, "div.bmm-c-form-table__foot")
+                        if add_size_btns and len(add_size_btns) > 0:
+                            add_btn = add_size_btns[0].find_element(By.TAG_NAME, "a")
+                            add_btn.click()
+                            time.sleep(2)  # 새 사이즈 필드 로딩 대기
+                        else:
+                            self.log_message("❌ 사이즈 추가 버튼을 찾을 수 없습니다.")
+                    
+                    self.log_message(f"✅ 사이즈 {i + 1} 입력 완료: {size}")
+                    time.sleep(1)
+                    
+                except Exception as e:
+                    self.log_message(f"❌ 사이즈 {i + 1} 입력 실패: {str(e)}")
+                    continue
+            
+            self.log_message(f"🎉 모든 사이즈 입력 완료: {len(sizes)}개")
+            return True
+            
+        except Exception as e:
+            self.log_message(f"❌ 사이즈 추가 오류: {str(e)}")
             return False
         
     
