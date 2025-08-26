@@ -46,7 +46,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QSpinBox, QCheckBox, QGroupBox, QFrame, 
                             QFileDialog, QMessageBox, QScrollArea, 
                             QRadioButton, QButtonGroup, QAbstractItemView)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QObject
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot, QTimer, QObject
 from PyQt6.QtGui import QFont, QColor, QBrush
 
 # 안전한 슬롯 데코레이터 - 슬롯 함수에서 예외 발생 시 프로그램 튕김 방지
@@ -603,6 +603,10 @@ class Main(QMainWindow):
     price_analysis_table_update_signal = pyqtSignal(int, int, str)  # row, col, text
     price_analysis_finished_signal = pyqtSignal()          # 분석 완료
     
+    # 확인 다이얼로그 시그널 추가 (스레드 안전)
+    show_confirmation_signal = pyqtSignal(str, str, str)   # title, message, product_name
+    confirmation_result_signal = pyqtSignal(bool)          # 사용자 선택 결과
+    
     def __init__(self):
         super().__init__()
         
@@ -653,6 +657,12 @@ class Main(QMainWindow):
         self.price_analysis_log_signal.connect(self.log_message)
         self.price_analysis_table_update_signal.connect(self.update_price_table_safe)
         self.price_analysis_finished_signal.connect(self.on_price_analysis_finished)
+        
+        # 확인 다이얼로그 시그널 연결 (스레드 안전)
+        self.show_confirmation_signal.connect(self.show_confirmation_dialog_main_thread)
+        
+        # 확인 결과 저장용
+        self.confirmation_result = None
         
         # 모든 UI 초기화 완료 후 주력 상품 자동 로드
         self.load_favorite_products_on_startup()
@@ -4412,11 +4422,25 @@ class Main(QMainWindow):
         options.add_argument('--silent')
         options.add_argument('--log-level=3')
         
+        # Abseil 로깅 경고 완전 차단
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        options.add_experimental_option('useAutomationExtension', False)
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument('--disable-infobars')
+        
+        # DevTools 및 디버깅 완전 비활성화
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-plugins')
+        options.add_argument('--disable-plugins-discovery')
+        options.add_argument('--disable-preconnect')
+        options.add_argument('--disable-remote-debugging')
+        options.add_argument('--remote-debugging-port=0')
+        
         # 음성 인식 및 미디어 기능 완전 비활성화
         options.add_argument('--disable-speech-api')
         options.add_argument('--disable-speech-synthesis-api')
         options.add_argument('--disable-voice-input')
-        options.add_argument('--disable-features=VoiceInteraction,SpeechRecognition')
+        options.add_argument('--disable-features=VoiceInteraction,SpeechRecognition,VoiceTranscription')
         
         # Google API 관련 오류 방지
         options.add_argument('--disable-background-networking')
@@ -11241,30 +11265,11 @@ class Main(QMainWindow):
             # 8. 상품 등록 완료 (실제 등록은 주석 처리)
             self.log_message(f"✅ 상품 정보 입력 완료")
             
-            # 사용자 확인 메시지 (상세 다이얼로그)
+            # 사용자 확인 메시지 (크래시 방지 강화)
             self.log_message(f"🔍 등록 전 최종 확인...")
             
-            # 상세 확인 다이얼로그 표시 (메인 스레드에서 실행)
-            user_confirmed = False
-            
-            def show_confirmation():
-                nonlocal user_confirmed
-                user_confirmed = self.show_product_confirmation_dialog(product_data, product_number, max_images)
-            
-            # 메인 스레드에서 다이얼로그 실행
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(0, show_confirmation)
-            
-            # 사용자 응답 대기
-            import time
-            timeout = 60  # 60초 타임아웃
-            elapsed = 0
-            while elapsed < timeout:
-                time.sleep(0.5)
-                elapsed += 0.5
-                # 다이얼로그가 닫혔는지 확인하는 로직 필요
-                # 여기서는 간단히 처리
-                break
+            # 크래시 방지 팝업 - 응답 있을 때까지 무한 대기
+            user_confirmed = self.show_crash_safe_confirmation(product_data, product_number, max_images)
             
             if user_confirmed:
                 self.log_message(f"✅ 사용자가 등록을 승인했습니다.")
@@ -11899,7 +11904,7 @@ class Main(QMainWindow):
             let count = 0;
             
             for (let i = 0; i < sizeControls.length; i++) {
-                if (sizeControls[i].innerText.includes("선택해 주세요")) {
+                if (sizeControls[i].innerText.includes("選択してください")) {
                     sizeControl = sizeControls[i];
                     
                     if (count != 2) {
@@ -11947,7 +11952,7 @@ class Main(QMainWindow):
                 }
             }
             
-            return selectSizeByText('변형 있음');
+            return selectSizeByText('バリエーションあり');
             """
             
             variation_result = self.shared_driver.execute_script(select_variation_script)
@@ -12044,14 +12049,14 @@ class Main(QMainWindow):
             self.log_message("🚚 배송방법 선택...")
             try:
                 checkboxes = WebDriverWait(self.shared_driver, 10).until(
-                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".bmm-c-checkbox__input"))
+                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, "label.bmm-c-checkbox.bmm-c-checkbox--pointer-none"))
                 )
                 
                 if len(checkboxes) >= 2:
                     # 두 번째 체크박스 클릭 (인덱스 1)
-                    checkbox = checkboxes[1]
+                    checkbox = checkboxes[0].find_element(By.TAG_NAME, "input")
                     self.shared_driver.execute_script("arguments[0].click();", checkbox)
-                    self.log_message("✅ 배송방법 선택 완료 (두 번째 옵션)")
+                    self.log_message("✅ 배송방법 선택 완료 (첫 번째 옵션)")
                     time.sleep(1)
                 else:
                     self.log_message("❌ 배송방법 체크박스를 찾을 수 없습니다.")
@@ -12079,6 +12084,8 @@ class Main(QMainWindow):
                 # JavaScript로 날짜 값 설정
                 self.shared_driver.execute_script(f"arguments[0].value = '{date_string}';", date_input)
                 
+                time.sleep(0.5)
+                
                 # 변경 이벤트 트리거
                 self.shared_driver.execute_script("arguments[0].dispatchEvent(new Event('change', { bubbles: true }));", date_input)
                 
@@ -12088,6 +12095,8 @@ class Main(QMainWindow):
             except Exception as e:
                 self.log_message(f"❌ 구입기간 설정 오류: {str(e)}")
                 return False
+            
+            time.sleep(1)
             
             # 3. 상품 가격 입력
             self.log_message("💰 상품 가격 입력...")
@@ -12103,8 +12112,15 @@ class Main(QMainWindow):
                     
                     # 가격 입력 필드 찾기
                     price_input = WebDriverWait(self.shared_driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "input.bmm-c-text-field.bmm-c-text-field--half-size-char"))
+                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "input.bmm-c-text-field.bmm-c-text-field--half-size-char"))
                     )
+                    
+                    # 사이즈를 입력했을경우, 두번째 input이 가격 필드
+                    if len(price_input) >= 2:
+                        price_input = price_input[1]
+                        
+                    else:
+                        price_input = price_input[0]
                     
                     price_input.clear()
                     price_input.send_keys(clean_price)
@@ -12350,27 +12366,117 @@ class Main(QMainWindow):
         """실패 수 증가"""
         self.today_stats['failed_count'] += 1
         self.update_today_stats()
+    
+    def safe_execute(self, func, *args, **kwargs):
+        """안전한 함수 실행 - 예외 발생 시에도 프로그램 계속 실행"""
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            self.log_message(f"⚠️ 안전 실행 중 오류 (계속 진행): {str(e)}")
+            import traceback
+            print(f"안전 실행 오류 상세: {traceback.format_exc()}")
+            return None
+    
+    def show_crash_safe_confirmation(self, product_data, product_number, max_images):
+        """크래시 방지 확인 다이얼로그 - 시그널/슬롯 방식"""
+        self.log_message("📋 확인 다이얼로그 요청 중...")
+        
+        # 결과 초기화
+        self.confirmation_result = None
+        
+        # 상품 정보 준비
+        title = str(product_data.get('title', 'N/A'))[:30]
+        message = f"상품을 BUYMA에 등록하시겠습니까?\n\n상품명: {title}...\n\n⚠️ 실제로 등록됩니다!"
+        
+        # 시그널로 메인 스레드에 다이얼로그 표시 요청
+        self.show_confirmation_signal.emit("상품 등록 확인", message, title)
+        
+        # 결과 대기 (무한 대기)
+        import time
+        from PyQt6.QtWidgets import QApplication
+        
+        wait_count = 0
+        while self.confirmation_result is None:
+            QApplication.processEvents()
+            time.sleep(0.1)
+            wait_count += 1
+            
+            # 10초마다 대기 상태 로그
+            if wait_count % 100 == 0:
+                self.log_message("⏳ 사용자 응답 대기 중...")
+        
+        result = self.confirmation_result
+        self.confirmation_result = None  # 결과 초기화
+        
+        self.log_message(f"✅ 사용자 응답 완료: {'승인' if result else '취소'}")
+        return result
+    
+    @pyqtSlot(str, str, str)
+    def show_confirmation_dialog_main_thread(self, title, message, product_name):
+        """메인 스레드에서 실행되는 확인 다이얼로그"""
+        try:
+            from PyQt6.QtWidgets import QMessageBox
+            
+            self.log_message("💬 확인 다이얼로그 표시됨")
+            
+            reply = QMessageBox.question(
+                self,  # 부모 위젯을 self로 설정
+                title,
+                message,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            # 결과 저장
+            self.confirmation_result = reply == QMessageBox.StandardButton.Yes
+            
+        except Exception as e:
+            self.log_message(f"⚠️ 다이얼로그 표시 오류: {str(e)}")
+            # 오류 시 취소로 처리
+            self.confirmation_result = False
 
 
 def main():
     """메인 함수 - 전역 예외 처리 포함"""
     import sys
     import traceback
+    from datetime import datetime
     
     def handle_exception(exc_type, exc_value, exc_traceback):
-        """전역 예외 처리기 - 프로그램 갑작스런 종료 방지"""
+        """전역 예외 처리기 - 프로그램 크래시 방지"""
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
         
         # 예외 정보 로깅
         error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-        print(f"🚨 예상치 못한 오류 발생:\n{error_msg}")
+        print(f"🚨 예상치 못한 오류 발생 (프로그램 계속 실행):\n{error_msg}")
         
         # 오류 파일로 저장
         try:
-            with open('error_log.txt', 'a', encoding='utf-8') as f:
-                f.write(f"\n[{datetime.now()}] 예상치 못한 오류:\n{error_msg}\n")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            with open(f'crash_report_{timestamp}.txt', 'w', encoding='utf-8') as f:
+                f.write(f"크래시 리포트 - {datetime.now()}\n")
+                f.write("=" * 60 + "\n")
+                f.write(f"예외 타입: {exc_type.__name__}\n")
+                f.write(f"예외 메시지: {str(exc_value)}\n")
+                f.write("=" * 60 + "\n")
+                f.write("상세 스택 트레이스:\n")
+                f.write(error_msg)
+                f.write("=" * 60 + "\n")
+        except:
+            pass
+        
+        # 사용자에게 알림 (가능한 경우)
+        try:
+            from PyQt6.QtWidgets import QApplication, QMessageBox
+            if QApplication.instance():
+                QMessageBox.warning(
+                    None,
+                    "프로그램 오류",
+                    f"예상치 못한 오류가 발생했지만 프로그램은 계속 실행됩니다.\n\n오류 리포트가 crash_report_{timestamp}.txt 파일에 저장되었습니다.\n\n계속 사용하시기 바랍니다.",
+                    QMessageBox.StandardButton.Ok
+                )
         except:
             pass
     
@@ -12378,12 +12484,16 @@ def main():
     sys.excepthook = handle_exception
     
     try:
+        from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtGui import QFont
+        from PyQt6.QtCore import QTimer
+        
         app = QApplication(sys.argv)
         app.setStyle('Fusion')  # 안정적인 스타일 사용
         
         # 애플리케이션 정보 설정
         app.setApplicationName("BUYMA 자동화 프로그램")
-        app.setApplicationVersion("2.3.0")
+        app.setApplicationVersion("3.1.0")
         app.setOrganizationName("소프트캣")
         
         # 폰트 설정 - 맑은 고딕으로 전체 통일
@@ -12395,14 +12505,37 @@ def main():
         window.show()
         
         # 시작 메시지
-        window.log_message("BUYMA 자동화 프로그램이 시작되었습니다.")
-        window.log_message("설정을 확인하고 작업을 시작해주세요.")
+        window.log_message("🚀 BUYMA 자동화 프로그램이 시작되었습니다.")
+        window.log_message("⚙️ 설정을 확인하고 작업을 시작해주세요.")
+        
+        # 정기적인 메모리 정리 (크래시 방지)
+        def cleanup_memory():
+            try:
+                import gc
+                gc.collect()
+                QTimer.singleShot(300000, cleanup_memory)  # 5분마다 실행
+            except:
+                pass
+        
+        QTimer.singleShot(300000, cleanup_memory)
         
         sys.exit(app.exec())
         
     except Exception as e:
-        print(f"🚨 프로그램 시작 중 오류: {e}")
+        print(f"🚨 프로그램 시작 중 치명적 오류: {e}")
         traceback.print_exc()
+        
+        # 치명적 오류도 파일로 저장
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            with open(f'fatal_error_{timestamp}.txt', 'w', encoding='utf-8') as f:
+                f.write(f"치명적 오류 - {datetime.now()}\n")
+                f.write("=" * 60 + "\n")
+                f.write(f"오류: {str(e)}\n")
+                f.write("=" * 60 + "\n")
+                f.write(traceback.format_exc())
+        except:
+            pass
 
 
 if __name__ == "__main__":
