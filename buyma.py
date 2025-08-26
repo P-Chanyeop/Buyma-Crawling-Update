@@ -15,6 +15,26 @@ import threading
 import random
 from datetime import datetime
 
+# 전역 예외 핸들러 추가 - 프로그램 튕김 방지
+def handle_exception(exc_type, exc_value, exc_traceback):
+    """전역 예외 핸들러 - 예상치 못한 오류로 인한 프로그램 종료 방지"""
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    
+    import traceback
+    error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    print(f"🚨 예외 발생 (프로그램 계속 실행):\n{error_msg}")
+    
+    # 로그 파일에도 저장
+    try:
+        with open('error_log.txt', 'a', encoding='utf-8') as f:
+            f.write(f"\n[{datetime.now()}] 예외 발생:\n{error_msg}\n")
+    except:
+        pass
+
+sys.excepthook = handle_exception
+
 # PyQt6 스타일시트 경고 무시
 import warnings
 warnings.filterwarnings("ignore", message="Could not parse stylesheet")
@@ -28,6 +48,39 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QRadioButton, QButtonGroup, QAbstractItemView)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QFont, QColor, QBrush
+
+# 안전한 슬롯 데코레이터 - 슬롯 함수에서 예외 발생 시 프로그램 튕김 방지
+def safe_slot(func):
+    """슬롯 함수를 안전하게 래핑하는 데코레이터"""
+    def wrapper(self, *args, **kwargs):
+        try:
+            # 함수의 매개변수 개수 확인
+            import inspect
+            sig = inspect.signature(func)
+            param_count = len([p for p in sig.parameters.values() if p.name != 'self'])
+            
+            # 매개변수 개수에 맞게 호출
+            if param_count == 0:
+                return func(self)
+            else:
+                return func(self, *args[:param_count], **kwargs)
+                
+        except Exception as e:
+            print(f"🚨 슬롯 함수 오류 ({func.__name__}): {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # 기존 UI 상태 복원 메서드들 활용
+            try:
+                if hasattr(self, 'restore_favorite_analysis_ui'):
+                    self.restore_favorite_analysis_ui()
+                elif hasattr(self, 'restore_upload_ui'):
+                    self.restore_upload_ui()
+                # 일반적인 버튼 활성화 복원
+                if hasattr(self, 'setEnabled'):
+                    self.setEnabled(True)
+            except:
+                pass
+    return wrapper
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -1485,12 +1538,19 @@ class Main(QMainWindow):
         self.stop_crawling_btn.setProperty("class", "danger")
         self.stop_crawling_btn.setEnabled(False)
         
-        self.preview_btn = QPushButton("👁️ 미리보기")
-        self.preview_btn.clicked.connect(self.preview_crawling)
+        # 크롤링 데이터 저장/불러오기 버튼 추가
+        self.save_crawling_btn = QPushButton("💾 저장")
+        self.save_crawling_btn.setToolTip("크롤링 데이터를 JSON 파일로 저장")
+        self.save_crawling_btn.clicked.connect(self.save_crawling_data)
+        
+        self.load_crawling_btn = QPushButton("📂 불러오기")
+        self.load_crawling_btn.setToolTip("저장된 크롤링 데이터를 불러오기")
+        self.load_crawling_btn.clicked.connect(self.load_crawling_data)
         
         control_layout.addWidget(self.start_crawling_btn)
         control_layout.addWidget(self.stop_crawling_btn)
-        control_layout.addWidget(self.preview_btn)
+        control_layout.addWidget(self.save_crawling_btn)
+        control_layout.addWidget(self.load_crawling_btn)
         control_layout.addStretch()
         
         layout.addLayout(control_layout)
@@ -1532,7 +1592,7 @@ class Main(QMainWindow):
         self.crawling_table.horizontalHeader().setStretchLastSection(True)
         
         # 기본 행 높이 설정 (버튼 높이에 맞춤)
-        self.crawling_table.verticalHeader().setDefaultSectionSize(35)
+        self.crawling_table.verticalHeader().setDefaultSectionSize(50)
         
         result_layout.addWidget(self.crawling_table)
         
@@ -3453,7 +3513,8 @@ class Main(QMainWindow):
         if file_path:
             self.url_input.setText(file_path)
     
-    def start_crawling(self):
+    @safe_slot
+    def start_crawling(self, checked=False):
         """크롤링 시작"""
         # 로그인 체크 제거 (크롤링은 로그인 없이 진행)
         url = self.url_input.text().strip()
@@ -3471,6 +3532,9 @@ class Main(QMainWindow):
         # 크롤링 시작 시간 기록
         import time
         self.today_stats['start_time'] = time.time()
+        
+        # 크롤링 URL 저장 (저장 기능에서 사용)
+        self.last_crawled_url = url
         
         # 크롤링된 상품 데이터 초기화
         self.crawled_products = []
@@ -3768,10 +3832,25 @@ class Main(QMainWindow):
                             
                             for li in colors_li_elements:
                                 try:
+                                    # 색상 카테고리 추출 (CSS 선택자 수정)
+                                    try:
+                                        color_category_element = li.find_element(By.CSS_SELECTOR, "span.item_color")
+                                        color_category = color_category_element.get_attribute("class").replace("item_color ", "").strip()
+                                        self.log_message(f"🎨 색상 카테고리 추출: {color_category}")
+                                    except Exception as cat_e:
+                                        color_category = ""  # 카테고리를 찾을 수 없는 경우 빈 문자열
+                                        self.log_message(f"⚠️ 색상 카테고리 추출 실패: {str(cat_e)}")
+                                    
                                     color_text = li.text.strip()
-                                    if color_text and color_text not in colors:
-                                        colors.append(color_text)
-                                except:
+                                    self.log_message(f"🎨 색상 텍스트 추출: {color_text}")
+                                    
+                                    if color_text and [color_category, color_text] not in colors:
+                                        colors.append([color_category, color_text])
+                                        self.log_message(f"✅ 색상 추가: [{color_category}, {color_text}]")
+                                    else:
+                                        self.log_message(f"⏭️ 색상 건너뛰기 (중복 또는 빈 텍스트): {color_text}")
+                                except Exception as li_e:
+                                    self.log_message(f"❌ 색상 li 처리 오류: {str(li_e)}")
                                     continue
                             
                             color_size_buttons[0].click()
@@ -4154,10 +4233,25 @@ class Main(QMainWindow):
                             
                             for li in colors_li_elements:
                                 try:
+                                    # 색상 카테고리 추출 (CSS 선택자 수정)
+                                    try:
+                                        color_category_element = li.find_element(By.CSS_SELECTOR, "span.item_color")
+                                        color_category = color_category_element.get_attribute("class").replace("item_color ", "").strip()
+                                        self.log_message(f"🎨 색상 카테고리 추출: {color_category}")
+                                    except Exception as cat_e:
+                                        color_category = ""  # 카테고리를 찾을 수 없는 경우 빈 문자열
+                                        self.log_message(f"⚠️ 색상 카테고리 추출 실패: {str(cat_e)}")
+                                    
                                     color_text = li.text.strip()
-                                    if color_text and color_text not in colors:
-                                        colors.append(color_text)
-                                except:
+                                    self.log_message(f"🎨 색상 텍스트 추출: {color_text}")
+                                    
+                                    if color_text and [color_category, color_text] not in colors:
+                                        colors.append([color_category, color_text])
+                                        self.log_message(f"✅ 색상 추가: [{color_category}, {color_text}]")
+                                    else:
+                                        self.log_message(f"⏭️ 색상 건너뛰기 (중복 또는 빈 텍스트): {color_text}")
+                                except Exception as li_e:
+                                    self.log_message(f"❌ 색상 li 처리 오류: {str(li_e)}")
                                     continue
                             
                             # 색상 정보 옵션 종료
@@ -4198,9 +4292,16 @@ class Main(QMainWindow):
             else:
                 self.log_message(f"⚙️ 색상/사이즈 수집 건너뛰기 (설정)")
             
+            time.sleep(0.5)
+            
             # 상품 설명 추출 (안전장치)
             try:
                 description_element = driver.find_element(By.CSS_SELECTOR, "p.free_txt")
+                
+                # 해당 요소로 스크롤 
+                driver.execute_script("arguments[0].scrollIntoView(true);", description_element)
+                time.sleep(1)
+                
                 description_text = description_element.text.strip() if description_element else ""
             except Exception as e:
                 self.log_message(f"⚠️ 상품 설명 추출 실패: {str(e)}")
@@ -4255,6 +4356,7 @@ class Main(QMainWindow):
             # 디버깅 로그 추가
             self.log_message(f"✅ 상품 #{index+1} 데이터 추출 완료: {title[:30]}...")
             self.log_message(f"   📊 이미지: {len(images)}장, 색상: {len(colors)}개, 사이즈: {len(sizes)}개")
+            self.log_message(f"   🎨 최종 색상 데이터: {colors}")
             
             return result
             
@@ -4362,7 +4464,8 @@ class Main(QMainWindow):
         
         return options
     
-    def start_buyma_login(self):
+    @safe_slot
+    def start_buyma_login(self, checked=False):
         """BUYMA 로그인 시작"""
         try:
             email = self.email_input.text().strip()
@@ -6926,23 +7029,311 @@ class Main(QMainWindow):
         # 크롤링 중지 시 UI 활성화
         self.disable_ui_during_crawling(False)
     
-    def preview_crawling(self):
-        """크롤링 미리보기"""
-        url = self.url_input.text().strip()
-        if not url:
-            QMessageBox.warning(self, "경고", "미리보기할 URL을 입력해주세요.")
-            return
-        
-        self.log_message(f"🔍 미리보기: {url}")
-        
-        # 간단한 미리보기 (첫 3개만)
-        import threading
-        
-        self.preview_thread = threading.Thread(target=self.run_crawling, args=(url, 3), daemon=True)
-        self.preview_thread.start()
-        """크롤링 미리보기"""
-        self.log_message("크롤링 미리보기를 실행합니다...")
-        # TODO: 미리보기 로직 구현
+    @safe_slot
+    def save_crawling_data(self, checked=False):
+        """크롤링 데이터를 JSON 파일로 저장"""
+        try:
+            # 크롤링된 데이터가 있는지 확인
+            if not hasattr(self, 'crawled_products') or len(self.crawled_products) == 0:
+                QMessageBox.warning(self, "경고", "저장할 크롤링 데이터가 없습니다.\n먼저 크롤링을 실행해주세요.")
+                return
+            
+            # 파일 저장 대화상자
+            current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"크롤링데이터_{current_time}.json"
+            
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "크롤링 데이터 저장",
+                default_filename,
+                "JSON Files (*.json);;All Files (*)"
+            )
+            
+            if not file_path:
+                return
+            
+            # 저장할 데이터 준비
+            save_data = {
+                "metadata": {
+                    "saved_at": datetime.now().isoformat(),
+                    "total_products": len(self.crawled_products),
+                    "source_url": getattr(self, 'last_crawled_url', ''),
+                    "version": "1.0"
+                },
+                "products": self.crawled_products
+            }
+            
+            # JSON 파일로 저장
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(save_data, f, ensure_ascii=False, indent=2)
+            
+            self.log_message(f"💾 크롤링 데이터 저장 완료: {file_path}")
+            self.log_message(f"📊 저장된 상품 수: {len(self.crawled_products)}개")
+            
+            QMessageBox.information(
+                self, 
+                "저장 완료", 
+                f"크롤링 데이터가 성공적으로 저장되었습니다.\n\n"
+                f"파일: {file_path}\n"
+                f"상품 수: {len(self.crawled_products)}개"
+            )
+            
+        except Exception as e:
+            error_msg = f"크롤링 데이터 저장 중 오류가 발생했습니다: {str(e)}"
+            self.log_message(f"❌ {error_msg}")
+            QMessageBox.critical(self, "저장 오류", error_msg)
+
+    @safe_slot
+    def load_crawling_data(self, checked=False):
+        """저장된 크롤링 데이터를 JSON 파일에서 불러오기"""
+        try:
+            # 파일 선택 대화상자
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "크롤링 데이터 불러오기",
+                "",
+                "JSON Files (*.json);;All Files (*)"
+            )
+            
+            if not file_path:
+                return
+            
+            # 기존 데이터가 있는 경우 확인
+            if hasattr(self, 'crawled_products') and len(self.crawled_products) > 0:
+                reply = QMessageBox.question(
+                    self,
+                    "데이터 덮어쓰기 확인",
+                    f"현재 {len(self.crawled_products)}개의 크롤링 데이터가 있습니다.\n"
+                    f"불러온 데이터로 덮어쓰시겠습니까?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+            
+            # JSON 파일 읽기
+            with open(file_path, 'r', encoding='utf-8') as f:
+                loaded_data = json.load(f)
+            
+            # 데이터 구조 확인
+            if 'products' not in loaded_data:
+                QMessageBox.warning(self, "파일 오류", "올바른 크롤링 데이터 파일이 아닙니다.")
+                return
+            
+            # 데이터 복원
+            self.crawled_products = loaded_data['products']
+            
+            # 메타데이터 정보 표시
+            metadata = loaded_data.get('metadata', {})
+            saved_at = metadata.get('saved_at', '알 수 없음')
+            total_products = metadata.get('total_products', len(self.crawled_products))
+            source_url = metadata.get('source_url', '알 수 없음')
+            
+            # 크롤링 테이블 업데이트
+            self.update_crawling_table()
+            
+            # 통계 업데이트
+            if hasattr(self, 'update_crawling_stats'):
+                self.update_crawling_stats()
+            
+            self.log_message(f"📂 크롤링 데이터 불러오기 완료: {file_path}")
+            self.log_message(f"📊 불러온 상품 수: {len(self.crawled_products)}개")
+            self.log_message(f"💾 저장 시간: {saved_at}")
+            
+            QMessageBox.information(
+                self,
+                "불러오기 완료",
+                f"크롤링 데이터를 성공적으로 불러왔습니다.\n\n"
+                f"상품 수: {total_products}개\n"
+                f"저장 시간: {saved_at}\n"
+                f"원본 URL: {source_url}"
+            )
+            
+        except json.JSONDecodeError:
+            error_msg = "JSON 파일 형식이 올바르지 않습니다."
+            self.log_message(f"❌ {error_msg}")
+            QMessageBox.critical(self, "파일 오류", error_msg)
+        except Exception as e:
+            error_msg = f"크롤링 데이터 불러오기 중 오류가 발생했습니다: {str(e)}"
+            self.log_message(f"❌ {error_msg}")
+            QMessageBox.critical(self, "불러오기 오류", error_msg)
+
+    def update_crawling_table(self):
+        """크롤링 테이블을 현재 데이터로 업데이트"""
+        try:
+            # 테이블 초기화
+            self.crawling_table.setRowCount(0)
+            
+            # 크롤링된 데이터가 없으면 종료
+            if not hasattr(self, 'crawled_products') or len(self.crawled_products) == 0:
+                return
+            
+            # 각 상품 데이터를 테이블에 추가
+            for item_data in self.crawled_products:
+                self.add_crawling_result_to_table(item_data)
+                
+            self.log_message(f"📊 크롤링 테이블 업데이트 완료: {len(self.crawled_products)}개 상품")
+            
+        except Exception as e:
+            self.log_message(f"❌ 크롤링 테이블 업데이트 오류: {str(e)}")
+
+    def add_crawling_result_to_table(self, item_data):
+        """크롤링 결과를 테이블에 추가"""
+        try:
+            row = self.crawling_table.rowCount()
+            self.crawling_table.insertRow(row)
+            
+            # 상품명
+            title = item_data.get('title', '제목 없음')
+            self.crawling_table.setItem(row, 0, QTableWidgetItem(title))
+            
+            # 브랜드
+            brand = item_data.get('brand', '브랜드 없음')
+            self.crawling_table.setItem(row, 1, QTableWidgetItem(brand))
+            
+            # 가격
+            price = item_data.get('price', '가격 없음')
+            self.crawling_table.setItem(row, 2, QTableWidgetItem(str(price)))
+            
+            # 이미지 수
+            images = item_data.get('images', [])
+            image_count = len(images) if images else 0
+            self.crawling_table.setItem(row, 3, QTableWidgetItem(f"{image_count}개"))
+            
+            # 색상/사이즈
+            colors = item_data.get('colors', [])
+            sizes = item_data.get('sizes', [])
+            options_text = f"색상:{len(colors)}개, 사이즈:{len(sizes)}개"
+            self.crawling_table.setItem(row, 4, QTableWidgetItem(options_text))
+            
+            # URL
+            url = item_data.get('url', '')
+            url_item = QTableWidgetItem(url[:50] + "..." if len(url) > 50 else url)
+            url_item.setToolTip(url)  # 전체 URL을 툴팁으로 표시
+            self.crawling_table.setItem(row, 5, url_item)
+            
+            # 상태
+            status = item_data.get('status', '완료')
+            self.crawling_table.setItem(row, 6, QTableWidgetItem(status))
+            
+            # 액션 버튼들 추가
+            self.add_action_buttons_to_crawling_table(row)
+            
+        except Exception as e:
+            self.log_message(f"❌ 테이블 행 추가 오류: {str(e)}")
+
+    def add_action_buttons_to_crawling_table(self, row):
+        """크롤링 테이블에 액션 버튼들 추가"""
+        try:
+            # 액션 버튼 위젯 생성
+            action_widget = QWidget()
+            action_layout = QHBoxLayout(action_widget)
+            action_layout.setContentsMargins(2, 2, 2, 2)
+            action_layout.setSpacing(2)
+            
+            # 1. 상세보기 버튼
+            detail_btn = QPushButton("📋")
+            detail_btn.setToolTip("상품 상세 정보 보기")
+            detail_btn.setFixedSize(35, 28)
+            detail_btn.setStyleSheet("""
+                QPushButton {
+                    background: #17a2b8;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background: #138496;
+                }
+            """)
+            detail_btn.clicked.connect(lambda checked, r=row: self.show_crawling_item_detail(r))
+            action_layout.addWidget(detail_btn)
+            
+            # 2. 바로 업로드 버튼
+            upload_btn = QPushButton("📤")
+            upload_btn.setToolTip("BUYMA에 바로 업로드")
+            upload_btn.setFixedSize(35, 28)
+            upload_btn.setStyleSheet("""
+                QPushButton {
+                    background: #28a745;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background: #1e7e34;
+                }
+            """)
+            upload_btn.clicked.connect(lambda checked, r=row: self.upload_single_item(r))
+            action_layout.addWidget(upload_btn)
+            
+            # 3. URL 열기 버튼
+            url_btn = QPushButton("🔗")
+            url_btn.setToolTip("원본 상품 페이지 열기")
+            url_btn.setFixedSize(35, 28)
+            url_btn.setStyleSheet("""
+                QPushButton {
+                    background: #6c757d;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background: #545b62;
+                }
+            """)
+            url_btn.clicked.connect(lambda checked, r=row: self.open_product_url(r))
+            action_layout.addWidget(url_btn)
+            
+            # 테이블에 위젯 설정
+            self.crawling_table.setCellWidget(row, 7, action_widget)
+            
+        except Exception as e:
+            self.log_message(f"❌ 액션 버튼 추가 오류: {str(e)}")
+
+    @safe_slot
+    def show_crawling_item_detail(self, row, checked=False):
+        """크롤링 상품 상세 정보 표시 (불러오기용)"""
+        try:
+            # 크롤링된 데이터에서 해당 행의 상품 정보 가져오기
+            if not hasattr(self, 'crawled_products') or row >= len(self.crawled_products):
+                QMessageBox.warning(self, "오류", "상품 정보를 찾을 수 없습니다.")
+                return
+            
+            product_data = self.crawled_products[row]
+            
+            # 상세 정보 다이얼로그 생성
+            dialog = QMessageBox(self)
+            dialog.setWindowTitle("상품 상세 정보")
+            dialog.setIcon(QMessageBox.Icon.Information)
+            
+            # 상세 정보 텍스트 구성
+            detail_text = f"""
+📦 상품명: {product_data.get('title', '정보 없음')}
+🏷️ 브랜드: {product_data.get('brand', '정보 없음')}
+💰 가격: {product_data.get('price', '정보 없음')}
+📂 카테고리: {product_data.get('category', '정보 없음')}
+
+🎨 색상 옵션: {', '.join(product_data.get('colors', [])) if product_data.get('colors') else '없음'}
+📏 사이즈 옵션: {', '.join(product_data.get('sizes', [])) if product_data.get('sizes') else '없음'}
+
+🖼️ 이미지 수: {len(product_data.get('images', []))}개
+🔗 원본 URL: {product_data.get('url', '정보 없음')}
+
+📝 설명: {product_data.get('description', '설명 없음')[:200]}{'...' if len(product_data.get('description', '')) > 200 else ''}
+            """
+            
+            dialog.setText(detail_text)
+            dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+            dialog.exec()
+            
+        except Exception as e:
+            error_msg = f"상품 상세 정보 표시 중 오류: {str(e)}"
+            self.log_message(f"❌ {error_msg}")
+            QMessageBox.critical(self, "오류", error_msg)
         
     def export_crawling_results(self):
         """크롤링 결과 내보내기"""
@@ -8071,7 +8462,8 @@ class Main(QMainWindow):
         status_item.setFont(font)
         self.price_table.setItem(row, 6, status_item)
     
-    def start_upload(self):
+    @safe_slot
+    def start_upload(self, checked=False):
         """업로드 시작 - 로그인 및 크롤링 데이터 확인"""
         try:
             # 1. 로그인 상태 확인
@@ -8305,56 +8697,56 @@ class Main(QMainWindow):
             self.log_message(f"상품 데이터 가져오기 오류: {str(e)}")
             return {}
     
-    def upload_single_product(self, driver, product_data):
-        """단일 상품 BUYMA 업로드"""
-        try:
-            self.log_message(f"📝 상품 등록 페이지 접속: {product_data['title']}")
+    # def upload_single_product(self, driver, product_data):
+    #     """단일 상품 BUYMA 업로드"""
+    #     try:
+    #         self.log_message(f"📝 상품 등록 페이지 접속: {product_data['title']}")
             
-            # BUYMA 상품 등록 페이지로 이동
-            upload_url = "https://www.buyma.com/my/item/new/"
-            driver.get(upload_url)
+    #         # BUYMA 상품 등록 페이지로 이동
+    #         upload_url = "https://www.buyma.com/my/item/new/"
+    #         driver.get(upload_url)
             
-            # 페이지 로딩 대기
-            import time
-            time.sleep(3)
+    #         # 페이지 로딩 대기
+    #         import time
+    #         time.sleep(3)
             
-            # 상품명 입력
-            title_success = self.fill_product_title(driver, product_data['title'])
-            if not title_success:
-                return False
+    #         # 상품명 입력
+    #         title_success = self.fill_product_title(driver, product_data['title'])
+    #         if not title_success:
+    #             return False
             
-            # 브랜드 입력
-            brand_success = self.fill_product_brand(driver, product_data['brand'])
-            if not brand_success:
-                return False
+    #         # 브랜드 입력
+    #         brand_success = self.fill_product_brand(driver, product_data['brand'])
+    #         if not brand_success:
+    #             return False
             
-            # 가격 입력
-            price_success = self.fill_product_price(driver, product_data['price'])
-            if not price_success:
-                return False
+    #         # 가격 입력
+    #         price_success = self.fill_product_price(driver, product_data['price'])
+    #         if not price_success:
+    #             return False
             
-            # 상품 설명 입력
-            desc_success = self.fill_product_description(driver, product_data['description'])
-            if not desc_success:
-                return False
+    #         # 상품 설명 입력
+    #         desc_success = self.fill_product_description(driver, product_data['description'])
+    #         if not desc_success:
+    #             return False
             
-            # 이미지 업로드 (있는 경우)
-            if product_data.get('images'):
-                image_success = self.upload_product_images(driver, product_data['images'])
-                if not image_success:
-                    self.log_message("⚠️ 이미지 업로드 실패 - 계속 진행")
+    #         # 이미지 업로드 (있는 경우)
+    #         if product_data.get('images'):
+    #             image_success = self.upload_product_images(driver, product_data['images'])
+    #             if not image_success:
+    #                 self.log_message("⚠️ 이미지 업로드 실패 - 계속 진행")
             
-            # 카테고리 선택 (기본값 사용)
-            self.select_default_category(driver)
+    #         # 카테고리 선택 (기본값 사용)
+    #         self.select_default_category(driver)
             
-            # 저장 또는 등록
-            save_success = self.save_product(driver)
+    #         # 저장 또는 등록
+    #         save_success = self.save_product(driver)
             
-            return save_success
+    #         return save_success
             
-        except Exception as e:
-            self.log_message(f"단일 상품 업로드 오류: {str(e)}")
-            return False
+    #     except Exception as e:
+    #         self.log_message(f"단일 상품 업로드 오류: {str(e)}")
+    #         return False
     
     def add_upload_result(self, product_data, status, success):
         """업로드 결과를 테이블에 추가"""
@@ -8975,10 +9367,6 @@ class Main(QMainWindow):
             if hasattr(self, 'automation_thread') and self.automation_thread and self.automation_thread.isRunning():
                 self.automation_thread.quit()
                 threads_to_wait.append(self.automation_thread)
-            
-            if hasattr(self, 'preview_thread') and self.preview_thread and self.preview_thread.isRunning():
-                self.preview_thread.quit()
-                threads_to_wait.append(self.preview_thread)
             
             if hasattr(self, 'price_analysis_thread') and self.price_analysis_thread and self.price_analysis_thread.isRunning():
                 self.price_analysis_thread.quit()
@@ -9809,6 +10197,7 @@ class Main(QMainWindow):
         except Exception as e:
             self.log_message(f"완료 처리 오류: {str(e)}")
     
+    @safe_slot
     def start_favorite_analysis(self):
         """주력상품 가격확인-가격수정 통합 시작"""
         try:
@@ -10052,6 +10441,7 @@ class Main(QMainWindow):
     
     # ==================== 새로운 주력상품 관리 함수들 ====================
     
+    @safe_slot
     def check_favorite_prices(self):
         """주력상품 가격확인"""
         try:
@@ -10148,6 +10538,7 @@ class Main(QMainWindow):
             self.progress_widget.set_task_error("주력상품 가격확인 오류", str(e))
             QMessageBox.critical(self, "오류", f"가격확인 중 오류가 발생했습니다:\n{str(e)}")
     
+    @safe_slot
     def update_favorite_prices(self):
         """주력상품 가격수정"""
         try:
@@ -11247,31 +11638,63 @@ class Main(QMainWindow):
             
             self.log_message(f"🎨 크롤링된 색상 추가 시작: {len(colors)}개 색상 - {colors}")
             
-            for i, color in enumerate(colors):
+            for i, color_data in enumerate(colors):
                 try:
-                    self.log_message(f"🎨 색상 {i + 1}/{len(colors)} 추가 중: {color}")
+                    # 색상 데이터 구조 확인 및 추출
+                    if isinstance(color_data, list) and len(color_data) >= 2:
+                        color_category = color_data[0]  # 색상 카테고리 (예: "black", "white")
+                        color_text = color_data[1]      # 색상 텍스트 (예: "블랙", "화이트")
+                    else:
+                        # 기존 형식 호환성 (단순 문자열)
+                        color_category = ""
+                        color_text = str(color_data)
                     
-                    # 1. 색상 Select 박스 찾기 및 클릭
-                    find_color_control_script = """
+                    self.log_message(f"🎨 색상 {i + 1}/{len(colors)} 추가 중: {color_text} (카테고리: {color_category})")
+                    
+                    # 1. 색상 Select 박스 찾기 및 클릭 (개선된 로직)
+                    find_color_control_script = f"""
                     let colorControls = document.querySelectorAll('.Select .Select-control');
                     let colorControl = null;
+                    let firstColorIndex = -1;
                     
-                    for (let j = 0; j < colorControls.length; j++) {
-                        if (colorControls[j].innerText.includes("색상 지정 없음")) {
-                            colorControl = colorControls[j];
-                            break;
-                        }
-                    }
+                    if ({i} === 0) {{
+                        // 첫 번째 색상: "色指定なし" (색상 지정 없음) 텍스트 찾기
+                        for (let j = 0; j < colorControls.length; j++) {{
+                            if (colorControls[j].innerText.includes("色指定なし")) {{
+                                colorControl = colorControls[j];
+                                firstColorIndex = j;
+                                console.log('첫 번째 색상 박스 찾음 (인덱스: ' + j + '):', colorControl.innerText.trim());
+                                // 첫 번째 색상 인덱스를 전역 변수에 저장
+                                window.firstColorBoxIndex = j;
+                                break;
+                            }}
+                        }}
+                    }} else {{
+                        // 두 번째 색상부터: 첫 번째 색상 인덱스 + 현재 색상 순서
+                        if (window.firstColorBoxIndex !== undefined) {{
+                            let targetIndex = window.firstColorBoxIndex + {i};
+                            if (colorControls.length > targetIndex) {{
+                                colorControl = colorControls[targetIndex];
+                                console.log('색상 박스 ' + targetIndex + ' 선택 (첫번째+' + {i} + '):', colorControl.innerText.trim());
+                            }} else {{
+                                console.warn('색상 박스 인덱스 ' + targetIndex + '가 범위를 벗어났습니다. 총 ' + colorControls.length + '개');
+                                return false;
+                            }}
+                        }} else {{
+                            console.warn('첫 번째 색상 박스 인덱스를 찾을 수 없습니다.');
+                            return false;
+                        }}
+                    }}
                     
-                    if (colorControl) {
-                        colorControl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                    if (colorControl) {{
+                        colorControl.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true }}));
                         colorControl.click?.();
-                        console.log('색상 Select 박스 클릭 완료');
+                        console.log('색상 Select 박스 클릭 완료 (색상 ' + ({i} + 1) + ')');
                         return true;
-                    } else {
+                    }} else {{
                         console.warn('색상 Select-control을 찾지 못했습니다.');
                         return false;
-                    }
+                    }}
                     """
                     
                     result = self.shared_driver.execute_script(find_color_control_script)
@@ -11281,13 +11704,51 @@ class Main(QMainWindow):
                     
                     time.sleep(2)  # 드롭다운 열림 대기
                     
-                    # 2. 색상 옵션 선택
+                    # 2. 색상 옵션 선택 (카테고리 → 일본어 변환 후 매칭)
                     select_color_script = f"""
-                    function selectColorByText(text) {{
+                    function selectColorByCategory(category, text) {{
                         const options = [...document.querySelectorAll('.Select-menu-outer .Select-option')];
                         console.log('사용 가능한 색상 옵션들:', options.map(opt => opt.innerText.trim()));
                         
-                        // 정확한 매칭 시도
+                        // 영어 카테고리를 일본어로 변환
+                        const categoryMapping = {{
+                            'black': 'ブラック',
+                            'white': 'ホワイト', 
+                            'red': 'レッド',
+                            'blue': 'ブルー',
+                            'green': 'グリーン',
+                            'yellow': 'イエロー',
+                            'pink': 'ピンク',
+                            'brown': 'ブラウン',
+                            'gray': 'グレー',
+                            'grey': 'グレー',
+                            'purple': 'パープル',
+                            'orange': 'オレンジ',
+                            'beige': 'ベージュ',
+                            'navy': 'ネイビー',
+                            'silver': 'シルバー',
+                            'gold': 'ゴールド'
+                        }};
+                        
+                        // 1단계: 카테고리 기반 일본어 매칭
+                        if (category && categoryMapping[category.toLowerCase()]) {{
+                            const japaneseCategory = categoryMapping[category.toLowerCase()];
+                            console.log('카테고리 변환:', category, '->', japaneseCategory);
+                            
+                            let categoryTarget = options.find(opt => {{
+                                const optText = opt.innerText.trim();
+                                return optText.includes(japaneseCategory);
+                            }});
+                            
+                            if (categoryTarget) {{
+                                console.log('일본어 카테고리 매칭 성공:', categoryTarget.innerText.trim());
+                                categoryTarget.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true }}));
+                                categoryTarget.click?.();
+                                return true;
+                            }}
+                        }}
+                        
+                        // 2단계: 색상 텍스트 정확한 매칭 시도
                         let target = options.find(opt => opt.innerText.trim() === text);
                         
                         // 부분 매칭 시도
@@ -11340,29 +11801,29 @@ class Main(QMainWindow):
                         }}
                     }}
                     
-                    return selectColorByText('{color}');
+                    return selectColorByCategory('{color_category}', '{color_text}');
                     """
                     
                     color_result = self.shared_driver.execute_script(select_color_script)
                     
                     if color_result:
-                        self.log_message(f"✅ 색상 옵션 선택 완료: {color}")
+                        self.log_message(f"✅ 색상 옵션 선택 완료: {color_text} (카테고리: {color_category})")
                         time.sleep(1)
                     else:
-                        self.log_message(f"❌ 색상 옵션 선택 실패: {color}")
+                        self.log_message(f"❌ 색상 옵션 선택 실패: {color_text} (카테고리: {color_category})")
                         continue
                     
-                    # 3. 색상 이름 입력 (기존 로직 유지)
+                    # 3. 색상 이름 입력 (color_text 사용)
                     text_inputs = self.shared_driver.find_elements(By.CSS_SELECTOR, "input.bmm-c-text-field")
                     
                     # 색상 이름 입력 필드 찾기 (인덱스 계산)
-                    color_input_index = 3 + i  # 기본 인덱스 3 + 색상 순서
+                    color_input_index = 2 + i  # 기본 인덱스 3 + 색상 순서
                     
                     if len(text_inputs) > color_input_index:
                         color_input = text_inputs[color_input_index]
                         color_input.clear()
-                        color_input.send_keys(color)
-                        self.log_message(f"✅ 색상 이름 입력 완료: {color}")
+                        color_input.send_keys(color_text)  # color_text 사용
+                        self.log_message(f"✅ 색상 이름 입력 완료: {color_text}")
                     else:
                         self.log_message(f"❌ 색상 이름 입력 필드를 찾을 수 없습니다 (인덱스: {color_input_index})")
                     
@@ -11373,7 +11834,7 @@ class Main(QMainWindow):
                         add_color_btn.click()
                         time.sleep(2)  # 새 색상 필드 로딩 대기
                     
-                    self.log_message(f"✅ 색상 {i + 1} 추가 완료: {color}")
+                    self.log_message(f"✅ 색상 {i + 1} 추가 완료: {color_text}")
                     time.sleep(1)
                     
                 except Exception as e:
@@ -11402,19 +11863,28 @@ class Main(QMainWindow):
             self.log_message(f"📏 크롤링된 사이즈 추가 시작: {len(sizes)}개 사이즈 - {sizes}")
             
             # 1. 사이즈 탭으로 이동
-            size_tab_script = """
-            const sizeTab = document.querySelector('li.sell-variation__tab-item[1]');
-            if (sizeTab) {
-                sizeTab.click();
-                console.log('사이즈 탭으로 이동 완료');
-                return true;
-            } else {
-                console.warn('사이즈 탭을 찾지 못했습니다.');
-                return false;
-            }
-            """
+            # size_tab_script = """
+            # const sizeTab = document.querySelector('li.sell-variation__tab-item[1]');
+            # if (sizeTab) {
+            #     sizeTab.click();
+            #     console.log('사이즈 탭으로 이동 완료');
+            #     return true;
+            # } else {
+            #     console.warn('사이즈 탭을 찾지 못했습니다.');
+            #     return false;
+            # }
+            # """
             
-            tab_result = self.shared_driver.execute_script(size_tab_script)
+            # tab_result = self.shared_driver.execute_script(size_tab_script)
+            
+            tab_result = self.shared_driver.find_elements(By.CSS_SELECTOR, "li.sell-variation__tab-item")[1]
+            
+            if tab_result:
+                tab_result.click()
+                tab_result = True
+            else:
+                tab_result = False
+                
             if not tab_result:
                 self.log_message("❌ 사이즈 탭으로 이동할 수 없습니다.")
                 return False
