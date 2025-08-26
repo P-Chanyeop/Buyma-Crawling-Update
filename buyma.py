@@ -625,6 +625,8 @@ class Main(QMainWindow):
         
         # 진행률 위젯 초기화
         self.progress_widget = ProgressWidget()
+        self.upload_progress_widget = ProgressWidget()  # 업로드용 진행률 위젯
+        self.price_progress_widget = ProgressWidget()   # 가격분석용 진행률 위젯
         
         # 통계 데이터 초기화
         self.today_stats = {
@@ -2142,39 +2144,41 @@ class Main(QMainWindow):
         upload_group = QGroupBox("📤 업로드 설정")
         upload_layout = QGridLayout(upload_group)
         
-        # upload_layout.addWidget(QLabel("카테고리:"), 0, 0)
-        # self.category_combo = QComboBox()
-        # self.category_combo.addItems([
-        #     "레디스 패션", "맨즈 패션", "키즈&베이비", "코스메&향수", 
-        #     "가방&지갑", "슈즈", "액세서리", "시계", "라이프스타일"
-        # ])
-        # upload_layout.addWidget(self.category_combo, 0, 1)
+        # 업로드 모드 설정 추가
+        upload_layout.addWidget(QLabel("업로드 모드:"), 0, 0)
+        self.upload_mode_combo = QComboBox()
+        self.upload_mode_combo.addItems(["🤖 자동 모드", "👤 수동 모드"])
+        self.upload_mode_combo.setToolTip("자동 모드: 확인 없이 바로 등록\n수동 모드: 등록 전 확인 팝업")
+        self.upload_mode_combo.setStyleSheet("""
+            QComboBox {
+                padding: 8px;
+                border: 2px solid #3498db;
+                border-radius: 5px;
+                background: white;
+                font-size: 12px;
+                min-width: 120px;
+            }
+            QComboBox:hover {
+                border-color: #2980b9;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox::down-arrow {
+                image: url(down_arrow.png);
+                width: 12px;
+                height: 12px;
+            }
+        """)
+        upload_layout.addWidget(self.upload_mode_combo, 0, 1)
         
-        # upload_layout.addWidget(QLabel("배송 방법:"), 0, 2)
-        # self.shipping_combo = QComboBox()
-        # self.shipping_combo.addItems(["국제배송", "국내배송", "직배송"])
-        # upload_layout.addWidget(self.shipping_combo, 0, 3)
-        
-        # upload_layout.addWidget(QLabel("업로드 모드:"), 1, 0)
-        # self.upload_mode = QComboBox()
-        # self.upload_mode.addItems(["즉시 등록", "초안 저장", "예약 등록"])
-        # upload_layout.addWidget(self.upload_mode, 1, 1)
-        
-        upload_layout.addWidget(QLabel("이미지 최대 개수:"), 0, 0)
+        upload_layout.addWidget(QLabel("이미지 최대 개수:"), 0, 2)
         self.max_images = QSpinBox()
         self.max_images.setRange(1, 20)
         self.max_images.setValue(10)
         self.max_images.setStyleSheet(self.get_spinbox_style())
-        upload_layout.addWidget(self.max_images, 0, 1)
-        
-        # self.auto_translate = QCheckBox("자동 번역")
-        # upload_layout.addWidget(self.auto_translate, 2, 0)
-        
-        # self.auto_categorize = QCheckBox("자동 카테고리 분류")
-        # upload_layout.addWidget(self.auto_categorize, 2, 1)
-        
-        # self.watermark_images = QCheckBox("워터마크 추가")
-        # upload_layout.addWidget(self.watermark_images, 2, 2)
+        upload_layout.addWidget(self.max_images, 0, 3)
         
         layout.addWidget(upload_group)
         
@@ -5569,7 +5573,15 @@ class Main(QMainWindow):
             self.log_message(f"🔧 설정: 할인 {discount}엔, 최소마진 {min_margin}엔, 모드: {'🤖 자동' if is_auto_mode else '👤 수동'}")
             self.log_message(f"📄 페이지별 순차 분석: {self.total_pages}페이지 ({self.page_size}개씩)")
             
-            # 진행률 위젯 표시
+            # 가격분석 진행률 위젯 표시
+            self.price_progress_widget.show_progress(
+                title="💰 가격 분석 진행률",
+                total=len(self.all_products),
+                current=0,
+                status="가격 분석 시작..."
+            )
+            
+            # 진행률 위젯 표시 (기존)
             self.progress_widget.update_progress(
                 0, 
                 len(self.all_products), 
@@ -5962,11 +5974,21 @@ class Main(QMainWindow):
                 total_failed += page_failed
 
                 # 진행률 위젯 업데이트 (분석 단계)
+                status_text = f"💰 가격 분석 진행 중"
+                detail_text = f"페이지 {page_num + 1}/{self.total_pages} - 분석 완료: {total_analyzed}개"
+                
                 QTimer.singleShot(0, lambda: self.progress_widget.update_progress(
                     total_analyzed, 
                     len(self.all_products), 
-                    "💰 가격 분석 진행 중", 
-                    f"페이지 {page_num + 1}/{self.total_pages} - 분석 완료: {total_analyzed}개"
+                    status_text, 
+                    detail_text
+                ))
+                
+                # 가격분석 진행률 위젯 업데이트
+                QTimer.singleShot(0, lambda: self.update_price_progress_widget(
+                    total_analyzed, 
+                    len(self.all_products), 
+                    f"{status_text} - {detail_text}"
                 ))
 
                 self.price_analysis_log_signal.emit(f"✅ 페이지 {page_num + 1} 최저가 검색 완료: 분석 {page_analyzed}개, 실패 {page_failed}개")
@@ -8525,6 +8547,14 @@ class Main(QMainWindow):
             
             self.log_message(f"🚀 자동 업로드 시작: {total_products}개 상품")
             
+            # 업로드 진행률 위젯 표시
+            self.upload_progress_widget.show_progress(
+                title="📤 상품 업로드 진행률",
+                total=total_products,
+                current=0,
+                status="업로드 준비 중..."
+            )
+            
             # 4. UI 상태 변경
             self.start_upload_btn.setEnabled(False)
             self.pause_upload_btn.setEnabled(True)
@@ -8598,7 +8628,11 @@ class Main(QMainWindow):
                     # 진행률 업데이트
                     progress = int((row / total_products) * 100)
                     self.upload_progress.setValue(progress)
-                    self.current_upload_status.setText(f"업로드 중: {row + 1}/{total_products} - {product_data['title'][:30]}...")
+                    status_text = f"업로드 중: {row + 1}/{total_products} - {product_data['title'][:30]}..."
+                    self.current_upload_status.setText(status_text)
+                    
+                    # 업로드 진행률 위젯 업데이트
+                    self.update_upload_progress_widget(row + 1, total_products, status_text)
                     
                     self.log_message(f"📤 업로드 중 ({row + 1}/{total_products}): {product_data['title'][:50]}...")
                     
@@ -11265,40 +11299,45 @@ class Main(QMainWindow):
             # 8. 상품 등록 완료 (실제 등록은 주석 처리)
             self.log_message(f"✅ 상품 정보 입력 완료")
             
-            # 사용자 확인 메시지 (크래시 방지 강화)
-            self.log_message(f"🔍 등록 전 최종 확인...")
+            # 업로드 모드 확인
+            upload_mode = self.upload_mode_combo.currentText()
+            is_manual_mode = "수동 모드" in upload_mode
             
-            # 크래시 방지 팝업 - 응답 있을 때까지 무한 대기
-            user_confirmed = self.show_crash_safe_confirmation(product_data, product_number, max_images)
-            
-            if user_confirmed:
-                self.log_message(f"✅ 사용자가 등록을 승인했습니다.")
+            if is_manual_mode:
+                # 수동 모드: 사용자 확인 필요
+                self.log_message(f"👤 수동 모드: 등록 전 최종 확인...")
+                user_confirmed = self.show_crash_safe_confirmation(product_data, product_number, max_images)
                 
-                # 실제 등록 버튼 클릭 (사용자가 승인한 경우에만)
-                try:
-                    from selenium.webdriver.common.by import By
-                    from selenium.webdriver.support.ui import WebDriverWait
-                    from selenium.webdriver.support import expected_conditions as EC
+                if not user_confirmed:
+                    self.log_message(f"❌ 사용자가 등록을 취소했습니다.")
+                    return {'success': False, 'error': '사용자가 등록을 취소함'}
                     
-                    confirm_button = WebDriverWait(self.shared_driver, 10).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, "button.bmm-c-btn.bmm-c-btn--p.bmm-c-btn--m.bmm-c-btn--thick"))
-                    )
-                    
-                    # 최종 확인 후 등록 버튼 클릭
-                    confirm_button.click()
-                    self.log_message("🚀 상품 등록 버튼 클릭 완료!")
-                    time.sleep(3)  # 등록 처리 대기
-                    
-                    # 등록 완료 확인 (선택사항)
-                    self.log_message("✅ 상품 등록이 완료되었습니다!")
-                    
-                except Exception as e:
-                    self.log_message(f"❌ 등록 버튼 클릭 오류: {str(e)}")
-                    return {'success': False, 'error': f'등록 버튼 클릭 실패: {str(e)}'}
-                    
+                self.log_message(f"✅ 사용자가 등록을 승인했습니다.")
             else:
-                self.log_message(f"❌ 사용자가 등록을 취소했습니다.")
-                return {'success': False, 'error': '사용자가 등록을 취소함'}
+                # 자동 모드: 바로 등록
+                self.log_message(f"🤖 자동 모드: 확인 없이 바로 등록 진행...")
+            
+            # 실제 등록 버튼 클릭
+            try:
+                from selenium.webdriver.common.by import By
+                from selenium.webdriver.support.ui import WebDriverWait
+                from selenium.webdriver.support import expected_conditions as EC
+                
+                confirm_button = WebDriverWait(self.shared_driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button.bmm-c-btn.bmm-c-btn--p.bmm-c-btn--m.bmm-c-btn--thick"))
+                )
+                
+                # 최종 확인 후 등록 버튼 클릭
+                confirm_button.click()
+                self.log_message("🚀 상품 등록 버튼 클릭 완료!")
+                time.sleep(3)  # 등록 처리 대기
+                
+                # 등록 완료 확인 (선택사항)
+                self.log_message("✅ 상품 등록이 완료되었습니다!")
+                
+            except Exception as e:
+                self.log_message(f"❌ 등록 버튼 클릭 오류: {str(e)}")
+                return {'success': False, 'error': f'등록 버튼 클릭 실패: {str(e)}'}
             
             # 실제 등록 버튼 클릭 (필요시 주석 해제)
             # result = self.submit_product_real()
@@ -12308,6 +12347,9 @@ class Main(QMainWindow):
             self.stop_upload_btn.setEnabled(False)
             self.current_upload_status.setText("대기 중")
             
+            # 업로드 진행률 위젯 숨기기
+            self.hide_upload_progress_widget()
+            
             # 다른 탭 활성화
             self.set_tabs_enabled(True)
             
@@ -12376,6 +12418,34 @@ class Main(QMainWindow):
             import traceback
             print(f"안전 실행 오류 상세: {traceback.format_exc()}")
             return None
+    
+    def update_upload_progress_widget(self, current, total, status):
+        """업로드 진행률 위젯 업데이트"""
+        try:
+            self.upload_progress_widget.update_progress(current, total, status)
+        except Exception as e:
+            self.log_message(f"⚠️ 업로드 진행률 위젯 업데이트 오류: {str(e)}")
+    
+    def update_price_progress_widget(self, current, total, status):
+        """가격분석 진행률 위젯 업데이트"""
+        try:
+            self.price_progress_widget.update_progress(current, total, status)
+        except Exception as e:
+            self.log_message(f"⚠️ 가격분석 진행률 위젯 업데이트 오류: {str(e)}")
+    
+    def hide_upload_progress_widget(self):
+        """업로드 진행률 위젯 숨기기"""
+        try:
+            self.upload_progress_widget.hide()
+        except Exception as e:
+            self.log_message(f"⚠️ 업로드 진행률 위젯 숨기기 오류: {str(e)}")
+    
+    def hide_price_progress_widget(self):
+        """가격분석 진행률 위젯 숨기기"""
+        try:
+            self.price_progress_widget.hide()
+        except Exception as e:
+            self.log_message(f"⚠️ 가격분석 진행률 위젯 숨기기 오류: {str(e)}")
     
     def show_crash_safe_confirmation(self, product_data, product_number, max_images):
         """크래시 방지 확인 다이얼로그 - 시그널/슬롯 방식"""
