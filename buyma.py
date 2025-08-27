@@ -230,13 +230,13 @@ class ProgressWidget(QWidget):
         screen = QApplication.primaryScreen().geometry()
         self.move(screen.width() - self.width() - 20, 50)
     
-    # def show_progress(self, title="🚀 작업 진행률", total=100, current=0, status="작업 시작..."):
-    #     """진행률 위젯 표시 및 초기화"""
-    #     self.title_label.setText(title)
-    #     self.update_progress(current, total, status, "")
-    #     self.show()
-    #     self.raise_()  # 맨 앞으로 가져오기
-    #     self.activateWindow()
+    def show_progress(self, title="🚀 작업 진행률", total=100, current=0, status="작업 시작..."):
+        """진행률 위젯 표시 및 초기화"""
+        self.title_label.setText(title)
+        self.update_progress(current, total, status, "")
+        self.show()
+        self.raise_()  # 맨 앞으로 가져오기
+        self.activateWindow()
     
     def update_progress(self, current, total, task_name="작업 진행 중", detail=""):
         """진행률 업데이트"""
@@ -7576,6 +7576,29 @@ class Main(QMainWindow):
             dialog.setWindowTitle("상품 상세 정보")
             dialog.setIcon(QMessageBox.Icon.Information)
             
+            # 색상과 사이즈 데이터 안전하게 처리
+            colors = product_data.get('colors', [])
+            sizes = product_data.get('sizes', [])
+            
+            # 리스트 내부의 리스트를 평탄화하고 문자열로 변환
+            def flatten_and_stringify(data):
+                if not data:
+                    return []
+                result = []
+                for item in data:
+                    if isinstance(item, list):
+                        # 리스트인 경우 첫 번째 요소만 사용 (카테고리, 텍스트 형태)
+                        if len(item) > 1:
+                            result.append(str(item[1]))  # 텍스트 부분
+                        elif len(item) > 0:
+                            result.append(str(item[0]))  # 카테고리 부분
+                    else:
+                        result.append(str(item))
+                return result
+            
+            color_list = flatten_and_stringify(colors)
+            size_list = flatten_and_stringify(sizes)
+            
             # 상세 정보 텍스트 구성
             detail_text = f"""
 📦 상품명: {product_data.get('title', '정보 없음')}
@@ -7583,8 +7606,8 @@ class Main(QMainWindow):
 💰 가격: {product_data.get('price', '정보 없음')}
 📂 카테고리: {product_data.get('category', '정보 없음')}
 
-🎨 색상 옵션: {', '.join(product_data.get('colors', [])) if product_data.get('colors') else '없음'}
-📏 사이즈 옵션: {', '.join(product_data.get('sizes', [])) if product_data.get('sizes') else '없음'}
+🎨 색상 옵션: {', '.join(color_list) if color_list else '없음'}
+📏 사이즈 옵션: {', '.join(size_list) if size_list else '없음'}
 
 🖼️ 이미지 수: {len(product_data.get('images', []))}개
 🔗 원본 URL: {product_data.get('url', '정보 없음')}
