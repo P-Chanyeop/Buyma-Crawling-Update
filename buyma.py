@@ -9908,80 +9908,80 @@ class Main(QMainWindow):
             self.log_message(f"자동 가격 수정 오류: {str(e)}")
             QMessageBox.critical(self, "오류", f"자동 가격 수정 중 오류가 발생했습니다:\n{str(e)}")
     
-    def update_favorite_table(self):
-        """주력 상품 테이블 업데이트"""
-        try:
-            self.favorite_table.setRowCount(len(self.favorite_products))
+    # def update_favorite_table(self):
+    #     """주력 상품 테이블 업데이트"""
+    #     try:
+    #         self.favorite_table.setRowCount(len(self.favorite_products))
             
-            for row, product in enumerate(self.favorite_products):
-                # 브랜드
-                self.favorite_table.setItem(row, 0, QTableWidgetItem(product['brand']))
+    #         for row, product in enumerate(self.favorite_products):
+    #             # 브랜드
+    #             self.favorite_table.setItem(row, 0, QTableWidgetItem(product['brand']))
                 
-                # 상품명
-                self.favorite_table.setItem(row, 1, QTableWidgetItem(product['product']))
-                self.favorite_table.setRowHeightt(row, 35)  # 기본 행 높이 설정
+    #             # 상품명
+    #             self.favorite_table.setItem(row, 1, QTableWidgetItem(product['product']))
+    #             self.favorite_table.setRowHeightt(row, 35)  # 기본 행 높이 설정
                 
-                # 현재가격
-                self.favorite_table.setItem(row, 2, QTableWidgetItem(f"{product['current_price']}엔"))
+    #             # 현재가격
+    #             self.favorite_table.setItem(row, 2, QTableWidgetItem(f"{product['current_price']}엔"))
                 
-                # 경쟁사 최저가
-                competitor_price = product.get('competitor_price', 0)
-                if competitor_price > 0:
-                    self.favorite_table.setItem(row, 3, QTableWidgetItem(f"{competitor_price}엔"))
-                else:
-                    self.favorite_table.setItem(row, 3, QTableWidgetItem("미확인"))
+    #             # 경쟁사 최저가
+    #             competitor_price = product.get('competitor_price', 0)
+    #             if competitor_price > 0:
+    #                 self.favorite_table.setItem(row, 3, QTableWidgetItem(f"{competitor_price}엔"))
+    #             else:
+    #                 self.favorite_table.setItem(row, 3, QTableWidgetItem("미확인"))
                 
-                # 제안가격
-                suggested_price = product.get('suggested_price', 0)
-                if suggested_price > 0:
-                    self.favorite_table.setItem(row, 4, QTableWidgetItem(f"{suggested_price}엔"))
-                else:
-                    self.favorite_table.setItem(row, 4, QTableWidgetItem("미확인"))
+    #             # 제안가격
+    #             suggested_price = product.get('suggested_price', 0)
+    #             if suggested_price > 0:
+    #                 self.favorite_table.setItem(row, 4, QTableWidgetItem(f"{suggested_price}엔"))
+    #             else:
+    #                 self.favorite_table.setItem(row, 4, QTableWidgetItem("미확인"))
                 
-                # 상태
-                status = product.get('status', '확인 필요')
-                status_item = QTableWidgetItem(status)
+    #             # 상태
+    #             status = product.get('status', '확인 필요')
+    #             status_item = QTableWidgetItem(status)
                 
-                if '수정 필요' in status:
-                    status_item.setForeground(QBrush(QColor("#e74c3c")))
-                elif '최신' in status:
-                    status_item.setForeground(QBrush(QColor("#27ae60")))
-                else:
-                    status_item.setForeground(QBrush(QColor("#f39c12")))
+    #             if '수정 필요' in status:
+    #                 status_item.setForeground(QBrush(QColor("#e74c3c")))
+    #             elif '최신' in status:
+    #                 status_item.setForeground(QBrush(QColor("#27ae60")))
+    #             else:
+    #                 status_item.setForeground(QBrush(QColor("#f39c12")))
                 
-                self.favorite_table.setItem(row, 5, status_item)
+    #             self.favorite_table.setItem(row, 5, status_item)
                 
-                # 마지막 확인
-                self.favorite_table.setItem(row, 6, QTableWidgetItem(product.get('last_check', '없음')))
+    #             # 마지막 확인
+    #             self.favorite_table.setItem(row, 6, QTableWidgetItem(product.get('last_check', '없음')))
                 
-                # 액션 버튼
-                action_layout = QHBoxLayout()
-                action_widget = QWidget()
+    #             # 액션 버튼
+    #             action_layout = QHBoxLayout()
+    #             action_widget = QWidget()
                 
-                # 가격 확인 버튼
-                check_btn = QPushButton("🔍")
-                check_btn.setMaximumWidth(30)
-                check_btn.setToolTip("가격 확인")
-                check_btn.clicked.connect(lambda checked, r=row: self.check_single_favorite_price(r))
-                action_layout.addWidget(check_btn)
+    #             # 가격 확인 버튼
+    #             check_btn = QPushButton("🔍")
+    #             check_btn.setMaximumWidth(30)
+    #             check_btn.setToolTip("가격 확인")
+    #             check_btn.clicked.connect(lambda checked, r=row: self.check_single_favorite_price(r))
+    #             action_layout.addWidget(check_btn)
                 
-                # 삭제 버튼
-                delete_btn = QPushButton("🗑️")
-                delete_btn.setMaximumWidth(30)
-                delete_btn.setToolTip("삭제")
-                delete_btn.setStyleSheet("background: #e74c3c; color: white;")
-                delete_btn.clicked.connect(lambda checked, r=row: self.delete_favorite_product(r))
-                action_layout.addWidget(delete_btn)
+    #             # 삭제 버튼
+    #             delete_btn = QPushButton("🗑️")
+    #             delete_btn.setMaximumWidth(30)
+    #             delete_btn.setToolTip("삭제")
+    #             delete_btn.setStyleSheet("background: #e74c3c; color: white;")
+    #             delete_btn.clicked.connect(lambda checked, r=row: self.delete_favorite_product(r))
+    #             action_layout.addWidget(delete_btn)
                 
-                action_layout.setContentsMargins(5, 2, 5, 2)
-                action_widget.setLayout(action_layout)
-                self.favorite_table.setCellWidget(row, 7, action_widget)
+    #             action_layout.setContentsMargins(5, 2, 5, 2)
+    #             action_widget.setLayout(action_layout)
+    #             self.favorite_table.setCellWidget(row, 7, action_widget)
             
-            # 통계 업데이트
-            self.update_favorite_statistics()
+    #         # 통계 업데이트
+    #         self.update_favorite_statistics()
             
-        except Exception as e:
-            self.log_message(f"주력 상품 테이블 업데이트 오류: {str(e)}")
+    #     except Exception as e:
+    #         self.log_message(f"주력 상품 테이블 업데이트 오류: {str(e)}")
     
     def update_favorite_statistics(self):
         """주력 상품 통계 업데이트"""
@@ -10764,7 +10764,7 @@ class Main(QMainWindow):
                     # 실제 BUYMA 최저가 조회 (get_buyma_lowest_price_for_favorite 사용)
                     lowest_price = self.get_buyma_lowest_price_for_favorite(product_name)
                     
-                    if lowest_price:
+                    if lowest_price and lowest_price > 0:
                         # 제안가 계산 (최저가 - 할인금액)
                         suggested_price = max(lowest_price - discount_amount, 0)
                         
@@ -10772,17 +10772,19 @@ class Main(QMainWindow):
                         price_diff = suggested_price - current_price
                         
                         # 상태 결정 (가격차이 기준)
-                        if price_diff < -min_margin:
+                        if abs(price_diff) <= 100:  # 100엔 이내 차이면 적정
+                            status = "✅ 현재가 적정"
+                        elif price_diff < -min_margin:
                             # 가격차이가 -설정값보다 작으면 (예: -600 < -500)
                             status = f"⚠️ 손실 예상 ({price_diff:+,}엔)"
                         else:
                             # 가격차이가 설정값 이내면
                             status = "💰 가격 수정 필요"
                         
-                        # 상품 데이터 업데이트
+                        # 상품 데이터 업데이트 (가격차이 통일)
                         product['lowest_price'] = lowest_price
                         product['suggested_price'] = suggested_price
-                        product['price_difference'] = current_price - lowest_price  # 내 가격 - 최저가
+                        product['price_difference'] = price_diff  # 제안가 - 현재가로 통일
                         product['status'] = status
                         product['last_check'] = datetime.now().strftime('%Y-%m-%d %H:%M')
                         
@@ -10847,16 +10849,16 @@ class Main(QMainWindow):
                 QMessageBox.warning(self, "로그인 필요", "BUYMA 로그인이 필요합니다.\n설정 탭에서 로그인을 완료해주세요.")
                 return
             
-            # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
-            self.switch_to_monitoring_tab()
-            self.set_tabs_enabled(False)
-            
             # 수정이 필요한 상품들 찾기
             need_update = [p for p in self.favorite_products if p.get('status') == '💰 가격 수정 필요']
             
             if not need_update:
                 QMessageBox.information(self, "알림", "수정이 필요한 상품이 없습니다.")
                 return
+            
+            # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
+            self.switch_to_monitoring_tab()
+            self.set_tabs_enabled(False)
             
             self.log_message(f"🔄 주력상품 가격수정 시작: {len(need_update)}개")
             
@@ -10898,20 +10900,25 @@ class Main(QMainWindow):
                         if reply != QMessageBox.StandardButton.Yes:
                             continue
                     
-                    # 실제 가격 수정 (시뮬레이션)
-                    success = self.update_product_price_simulation(product, suggested_price)
+                    # 실제 BUYMA 가격 수정 (update_single_product_price 로직 활용)
+                    result = self.update_buyma_product_price(product_name, suggested_price, auto_mode)
                     
-                    if success:
+                    if result == True:
                         product['current_price'] = suggested_price
-                        product['status'] = "수정 완료"
+                        product['status'] = "✅ 수정 완료"
                         product['last_update'] = datetime.now().strftime('%Y-%m-%d %H:%M')
                         updated_count += 1
                         
                         self.log_message(f"✅ 가격 수정 완료: {product_name} → {suggested_price:,}엔")
+                    elif result == "cancelled":
+                        product['status'] = "❌ 수정 취소"
+                        self.log_message(f"❌ 가격 수정 취소: {product_name}")
                     else:
+                        product['status'] = "❌ 수정 실패"
                         self.log_message(f"❌ 가격 수정 실패: {product_name}")
                     
                 except Exception as e:
+                    product['status'] = "❌ 수정 오류"
                     self.log_message(f"❌ 가격 수정 오류: {product.get('name', 'Unknown')} - {str(e)}")
                     continue
             
@@ -10925,6 +10932,9 @@ class Main(QMainWindow):
                 f"총 {updated_count}개 상품 수정 완료"
             )
             
+            # UI 상태 복원 (중요!)
+            self.set_tabs_enabled(True)
+            
             self.log_message(f"🔄 주력상품 가격수정 완료: {updated_count}개 수정")
             QMessageBox.information(self, "수정 완료", f"{updated_count}개 상품의 가격이 수정되었습니다.")
             
@@ -10932,6 +10942,8 @@ class Main(QMainWindow):
             self.log_message(f"❌ 주력상품 가격수정 오류: {str(e)}")
             # 오류 시 진행률 위젯에 오류 표시
             self.progress_widget.set_task_error("주력상품 가격수정 오류", str(e))
+            # UI 상태 복원 (오류 시에도 필수!)
+            self.set_tabs_enabled(True)
             QMessageBox.critical(self, "오류", f"가격수정 중 오류가 발생했습니다:\n{str(e)}")
     
     def get_competitor_price_simulation(self, product_name):
@@ -10965,9 +10977,9 @@ class Main(QMainWindow):
                 self.favorite_table.setItem(row, 1, QTableWidgetItem(f"{current_price:,}엔"))
                 
                 # 경쟁사 최저가 → 최저가
-                competitor_price = product.get('competitor_price', 0)
-                if competitor_price > 0:
-                    self.favorite_table.setItem(row, 2, QTableWidgetItem(f"{competitor_price:,}엔"))
+                lowest_price = product.get('lowest_price', 0)
+                if lowest_price > 0:
+                    self.favorite_table.setItem(row, 2, QTableWidgetItem(f"{lowest_price:,}엔"))
                 else:
                     self.favorite_table.setItem(row, 2, QTableWidgetItem("-"))
                 
@@ -10978,8 +10990,8 @@ class Main(QMainWindow):
                 else:
                     self.favorite_table.setItem(row, 3, QTableWidgetItem("-"))
                 
-                # 가격차이 (새로 추가)
-                price_diff = product.get('price_diff', 0)
+                # 가격차이 (price_difference 키 사용)
+                price_diff = product.get('price_difference', 0)
                 if price_diff != 0:
                     if price_diff > 0:
                         diff_text = f"+{price_diff:,}엔"
@@ -11191,10 +11203,10 @@ class Main(QMainWindow):
                                 status = "💰 가격 수정 필요"
                                 needs_update = True
                         
-                        # 결과 업데이트
-                        product['competitor_price'] = competitor_price
+                        # 결과 업데이트 (키 이름 통일)
+                        product['lowest_price'] = competitor_price      # competitor_price → lowest_price
                         product['suggested_price'] = suggested_price
-                        product['price_diff'] = price_diff  # 가격차이 저장
+                        product['price_difference'] = price_diff        # price_diff → price_difference
                         product['status'] = status
                         product['needs_update'] = needs_update
                         product['last_check'] = datetime.now().strftime('%Y-%m-%d %H:%M')
@@ -11203,6 +11215,9 @@ class Main(QMainWindow):
                         self.log_message(f"✅ 분석 완료: {product_name} - {status}")
                         
                     else:
+                        product['lowest_price'] = 0                     # 키 이름 통일
+                        product['suggested_price'] = 0
+                        product['price_difference'] = 0                 # 키 이름 통일
                         product['status'] = "분석 실패"
                         product['needs_update'] = False
                         failed_count += 1
@@ -11455,22 +11470,11 @@ class Main(QMainWindow):
         try:
             product_name = product.get('name', '')
             
-            # 가격관리 탭의 가격 수정 로직 활용
-            # 실제 구현에서는 상품ID를 통한 직접 수정이 필요하지만
-            # 현재는 시뮬레이션으로 처리
+            # 가격관리 탭의 update_buyma_product_price 함수와 동일한 로직 사용
+            return self.update_buyma_product_price(product_name, new_price, is_auto_mode)
             
-            if hasattr(self, 'shared_driver') and self.shared_driver:
-                # 실제 BUYMA 가격 수정 로직
-                # (가격관리 탭의 update_buyma_product_price 함수와 동일한 로직)
-                
-                # 현재는 시뮬레이션으로 처리
-                import time
-                time.sleep(1)  # 실제 처리 시뮬레이션
-                
-                # 성공률 90%로 시뮬레이션
-                import random
-                return random.random() > 0.1
-            
+        except Exception as e:
+            self.log_message(f"❌ 주력상품 가격 수정 오류: {str(e)}")
             return False
             
         except Exception as e:
