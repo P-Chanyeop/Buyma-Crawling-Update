@@ -1,0 +1,12 @@
+크래시 리포트 - 2025-08-27 19:59:59.654610
+============================================================
+예외 타입: AttributeError
+예외 메시지: 'ProgressWidget' object has no attribute 'show_progress'
+============================================================
+상세 스택 트레이스:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 5167, in load_my_products
+    self.price_progress_widget.show_progress(
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ProgressWidget' object has no attribute 'show_progress'
+============================================================

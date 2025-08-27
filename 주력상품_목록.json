@@ -2,23 +2,42 @@
   {
     "name": "★ADIDAS★Grand Court Low Yellow\n商品ID 0121588967 (詳細)\n出品情報をコピーして新規出品",
     "current_price": 11200,
-    "competitor_price": 0,
+    "competitor_price": 17511,
     "suggested_price": 0,
-    "status": "확인 필요",
-    "last_check": "없음",
+    "status": "❌ 최저가 검색 실패",
+    "last_check": "2025-08-27 22:12",
     "added_date": "2025-08-25 16:49:01",
     "product_id": "",
-    "url": "https://www.buyma.com/item/121588967"
+    "url": "https://www.buyma.com/item/121588967",
+    "price_diff": 0,
+    "lowest_price": 0,
+    "price_difference": 0
   },
   {
     "name": "★ADIDAS★Handball Spezial Cream White\n商品ID 0121588714 (詳細)\n出品情報をコピーして新規出品",
     "current_price": 16900,
-    "competitor_price": 0,
+    "competitor_price": 16624,
     "suggested_price": 0,
-    "status": "확인 필요",
-    "last_check": "없음",
+    "status": "❌ 최저가 검색 실패",
+    "last_check": "2025-08-27 22:12",
     "added_date": "2025-08-25 16:49:04",
     "product_id": "",
-    "url": "https://www.buyma.com/item/121588714"
+    "url": "https://www.buyma.com/item/121588714",
+    "price_diff": -376,
+    "lowest_price": 0,
+    "price_difference": 0
+  },
+  {
+    "name": "★AMI PARIS★ Crew neck logo knit\n商品ID 0121683875 (詳細)\n出品情報をコピーして新規出品",
+    "current_price": 29600,
+    "competitor_price": 0,
+    "suggested_price": 0,
+    "status": "❌ 최저가 검색 실패",
+    "last_check": "2025-08-27 22:12",
+    "added_date": "2025-08-27 21:31:49",
+    "product_id": "ID 없음",
+    "url": "상품 URL 없음",
+    "lowest_price": 0,
+    "price_difference": 0
   }
 ]

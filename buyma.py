@@ -13,6 +13,8 @@ import psutil
 import requests
 import threading
 import random
+import re
+import time
 from datetime import datetime
 
 # 전역 예외 핸들러 추가 - 프로그램 튕김 방지
@@ -227,6 +229,14 @@ class ProgressWidget(QWidget):
         """화면 우상단으로 이동"""
         screen = QApplication.primaryScreen().geometry()
         self.move(screen.width() - self.width() - 20, 50)
+    
+    # def show_progress(self, title="🚀 작업 진행률", total=100, current=0, status="작업 시작..."):
+    #     """진행률 위젯 표시 및 초기화"""
+    #     self.title_label.setText(title)
+    #     self.update_progress(current, total, status, "")
+    #     self.show()
+    #     self.raise_()  # 맨 앞으로 가져오기
+    #     self.activateWindow()
     
     def update_progress(self, current, total, task_name="작업 진행 중", detail=""):
         """진행률 업데이트"""
@@ -607,6 +617,24 @@ class Main(QMainWindow):
     show_confirmation_signal = pyqtSignal(str, str, str)   # title, message, product_name
     confirmation_result_signal = pyqtSignal(bool)          # 사용자 선택 결과
     
+    # 진행률 위젯 업데이트 시그널 추가
+    update_price_progress_signal = pyqtSignal(int, int, str)  # current, total, status
+    hide_price_progress_signal = pyqtSignal()                 # 진행률 위젯 숨기기
+    
+    # 내 상품 크롤링 관련 시그널 추가
+    my_products_progress_signal = pyqtSignal(int, int, str)   # current, total, status
+    my_products_log_signal = pyqtSignal(str)                 # 로그 메시지
+    my_products_finished_signal = pyqtSignal()               # 완료
+    
+    # 진행률 위젯 완료/오류 상태 시그널 추가
+    progress_complete_signal = pyqtSignal(str, str)          # title, message
+    progress_error_signal = pyqtSignal(str, str)             # title, error_message
+    
+    # 대시보드 업데이트 시그널 추가
+    dashboard_step_signal = pyqtSignal(str, str)             # step_text, color
+    dashboard_progress_signal = pyqtSignal(str, int)         # progress_name, value
+    dashboard_log_signal = pyqtSignal(str)                   # log_message
+    
     def __init__(self):
         super().__init__()
         
@@ -662,6 +690,19 @@ class Main(QMainWindow):
         
         # 확인 다이얼로그 시그널 연결 (스레드 안전)
         self.show_confirmation_signal.connect(self.show_confirmation_dialog_main_thread)
+        
+        # 진행률 위젯 시그널 연결
+        self.update_price_progress_signal.connect(self.update_price_progress_widget_safe)
+        self.hide_price_progress_signal.connect(self.hide_price_progress_widget)
+        
+        # 내 상품 크롤링 시그널 연결
+        self.my_products_progress_signal.connect(self.update_price_progress_widget_safe)
+        self.my_products_log_signal.connect(self.log_message)
+        self.my_products_finished_signal.connect(self.on_my_products_finished)
+        
+        # 진행률 위젯 완료/오류 상태 시그널 연결
+        self.progress_complete_signal.connect(self.set_progress_complete)
+        self.progress_error_signal.connect(self.set_progress_error)
         
         # 확인 결과 저장용
         self.confirmation_result = None
@@ -1117,8 +1158,8 @@ class Main(QMainWindow):
         """탭 생성"""
         self.tab_widget = QTabWidget()
         
-        # 대시보드 탭 (첫 번째)
-        self.create_dashboard_tab()
+        # 대시보드 탭 (첫 번째) - 주석처리
+        # self.create_dashboard_tab()
         
         # 크롤링 탭
         self.create_crawling_tab()
@@ -1489,7 +1530,7 @@ class Main(QMainWindow):
         scroll_area.setWidget(scroll_content)
         main_layout.addWidget(scroll_area)
         
-        self.tab_widget.addTab(tab, "📊 대시보드")
+        # self.tab_widget.addTab(tab, "📊 대시보드")  # 주석처리
     
     def create_crawling_tab(self):
         """크롤링 탭 생성"""
@@ -1691,7 +1732,7 @@ class Main(QMainWindow):
         # 가격 관리 컨트롤
         price_control_layout = QHBoxLayout()
         
-        self.load_my_products_btn = QPushButton("📥 내 상품 불러오기")
+        self.load_my_products_btn = QPushButton("🔍 가격분석")
         self.load_my_products_btn.setMinimumHeight(45)
         self.load_my_products_btn.setStyleSheet("""
             QPushButton {
@@ -1755,7 +1796,33 @@ class Main(QMainWindow):
         """)
         self.load_json_btn.clicked.connect(self.load_products_from_json)
         
+        # 가격 수정 버튼 추가
+        self.update_prices_btn = QPushButton("💰 가격수정")
+        self.update_prices_btn.setMinimumHeight(45)
+        self.update_prices_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #28a745, stop:1 #1e7e34);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 12px 20px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #34ce57, stop:1 #28a745);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1e7e34, stop:1 #155724);
+            }
+        """)
+        self.update_prices_btn.clicked.connect(self.update_analyzed_prices)
+        
         price_control_layout.addWidget(self.load_my_products_btn)
+        price_control_layout.addWidget(self.update_prices_btn)
         price_control_layout.addWidget(self.load_json_btn)
         price_control_layout.addWidget(self.analyze_price_btn)
         
@@ -5107,9 +5174,34 @@ class Main(QMainWindow):
         if not self.check_login_required():
             return
         
+        # 테이블에 이미 데이터가 있는지 확인
+        if self.price_table.rowCount() > 0:
+            self.log_message("📊 테이블에 이미 데이터가 있습니다. 바로 가격분석을 시작합니다...")
+            
+            # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
+            self.switch_to_monitoring_tab()
+            self.set_tabs_enabled(False)
+            
+            # 가격분석 진행률 위젯 표시
+            self.price_progress_widget.show()
+            self.update_price_progress_widget(0, self.price_table.rowCount(), "기존 데이터로 가격분석 시작...")
+            
+            # 기존 테이블 데이터로 바로 가격분석 실행
+            import threading
+            self.price_analysis_thread = threading.Thread(
+                target=self.analyze_existing_table_data, 
+                daemon=True
+            )
+            self.price_analysis_thread.start()
+            return
+        
         # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
         self.switch_to_monitoring_tab()
         self.set_tabs_enabled(False)
+        
+        # 가격분석 진행률 위젯 표시
+        self.price_progress_widget.show()
+        self.update_price_progress_widget(0, 100, "내 상품 불러오기 시작...")
         
         self.log_message("📥 내 상품을 불러오는 중...")
         
@@ -5176,12 +5268,14 @@ class Main(QMainWindow):
                         try:
                             total_count_elem = self.shared_driver.find_element(By.CSS_SELECTOR, "p.itemedit_actions_nums")
                             total_count_text = total_count_elem.text.strip()
-                            import re
                             # 1～100件(全 2962件) 형식에서 2962 추출
                             match = re.search(r'全\s*([\d,]+)件', total_count_text)
                             if match:
                                 total_count = match.group(1).replace(',', '')
-                                self.log_message(f"📊 총 판매 중인 상품 수: {total_count}개")
+                                self.my_products_log_signal.emit(f"📊 총 판매 중인 상품 수: {total_count}개")
+                                
+                                # 진행률 위젯 총 개수 업데이트 (시그널 사용)
+                                self.update_price_progress_signal.emit(0, int(total_count), f"총 {total_count}개 상품 발견")
                                 
                             else:
                                 self.log_message("⚠️ 총 상품 수를 추출하지 못했습니다.")
@@ -5224,7 +5318,6 @@ class Main(QMainWindow):
                                 product_url = link_elem.get_attribute("href")
                                 
                                 # URL에서 상품ID 추출 (예: /item/12345678/ → 12345678)
-                                import re
                                 id_match = re.search(r'/item/(\d+)/', product_url)
                                 if id_match:
                                     product_id = id_match.group(1)
@@ -5254,9 +5347,16 @@ class Main(QMainWindow):
                             
                             # 진행 상황 로그 (10개마다)
                             if total_products % 10 == 0:
-                                self.log_message(f"📦 진행 상황: {total_products}개 상품 수집 완료")
+                                self.my_products_log_signal.emit(f"📦 진행 상황: {total_products}개 상품 수집 완료")
+                                
+                                # 진행률 위젯 업데이트 (시그널 사용)
+                                self.update_price_progress_signal.emit(
+                                    total_products, 
+                                    3000,  # 임시 총 개수 (실제로는 위에서 업데이트됨)
+                                    f"상품 수집 중: {total_products}개 완료"
+                                )
                             else:
-                                self.log_message(f"📦 상품 {total_products}: {title[:30]}... - {price_text}")
+                                self.my_products_log_signal.emit(f"📦 상품 {total_products}: {title[:30]}... - {price_text}")
                             
                             # 중간 저장 (50개마다 메모리 절약)
                             if total_products % 50 == 0:
@@ -5301,15 +5401,94 @@ class Main(QMainWindow):
             # UI 테이블에 결과 표시 (모든 상품 표시)
             display_products = json_data["상품_목록"]
             self.display_my_products(display_products)
-            self.log_message(f"🎉 내 상품 {total_products}개 수집 완료! (테이블에 {len(display_products)}개 표시)")
+            self.my_products_log_signal.emit(f"🎉 내 상품 {total_products}개 수집 완료! (테이블에 {len(display_products)}개 표시)")
             
-            # UI 제어 해제: 다른 탭 활성화
-            self.set_tabs_enabled(True)
+            # 가격분석 시작 (내 상품 불러오기 완료 후)
+            self.my_products_log_signal.emit("🔍 가격분석을 시작합니다...")
+            
+            # 가격분석 설정값 가져오기
+            discount = self.discount_amount.value()
+            min_margin = self.min_margin.value()
+            is_auto_mode = self.auto_mode.isChecked()
+            
+            self.my_products_log_signal.emit(f"🔍 가격 분석 시작 - 모드: {'🤖 자동' if is_auto_mode else '👤 수동'}")
+            
+            # 각 상품별 가격분석 실행
+            for row in range(len(display_products)):
+                try:
+                    product = display_products[row]
+                    product_name = product.get('title', '')
+                    current_price_text = product.get('current_price', '')
+                    
+                    self.my_products_log_signal.emit(f"🔍 분석 중: {product_name[:30]}...")
+                    
+                    # 진행률 업데이트
+                    self.update_price_progress_signal.emit(
+                        row + 1, 
+                        len(display_products), 
+                        f"가격분석 중: {product_name[:30]}..."
+                    )
+                    
+                    # BUYMA에서 해당 상품 검색하여 최저가 찾기
+                    lowest_price = self.search_buyma_lowest_price(product_name)
+                    
+                    if lowest_price:
+                        # 제안가 계산 (최저가 - 할인금액)
+                        suggested_price = max(lowest_price - discount, 0)
+                        
+                        # 현재가격에서 숫자만 추출 (¥31,100 → 31100)
+                        import re
+                        current_price_numbers = re.findall(r'[\d,]+', current_price_text)
+                        current_price = int(current_price_numbers[0].replace(',', '')) if current_price_numbers else 0
+                        
+                        # 마진 계산 (내 가격과 최저가의 차이)
+                        price_difference = current_price - lowest_price if current_price > 0 else 0
+                        
+                        # 상품 데이터 업데이트
+                        product['lowest_price'] = lowest_price
+                        product['suggested_price'] = suggested_price
+                        product['price_difference'] = price_difference
+                        
+                        # 마진을 가격 차이로 표시
+                        if price_difference > 0:
+                            margin_text = f"+¥{price_difference:,} (비쌈)"
+                        elif price_difference < 0:
+                            margin_text = f"¥{price_difference:,} (저렴함)"
+                        else:
+                            margin_text = "¥0 (동일)"
+                        
+                        # 가격 수정 필요 상태 결정
+                        suggested_difference = suggested_price - current_price
+                        if suggested_difference >= -abs(min_margin):  # -500엔 이상이면 OK
+                            product['status'] = "💰 가격 수정 필요"
+                            self.my_products_log_signal.emit(f"✅ {product_name[:20]}... - 최저가: ¥{lowest_price:,}, 제안가: ¥{suggested_price:,}, 차이: {margin_text}")
+                        else:
+                            product['status'] = f"⚠️ 손실 예상 ({suggested_difference:+,}엔)"
+                            self.my_products_log_signal.emit(f"⚠️ 손실 예상: {product_name[:20]}... - 제안가 차이: {suggested_difference:+,}엔")
+                        
+                    else:
+                        product['lowest_price'] = 0
+                        product['suggested_price'] = 0
+                        product['status'] = "❌ 최저가 검색 실패"
+                        self.my_products_log_signal.emit(f"⚠️ {product_name[:20]}... - 최저가 검색 실패")
+                    
+                    # 딜레이
+                    time.sleep(2)
+                    
+                except Exception as e:
+                    self.my_products_log_signal.emit(f"❌ 상품 분석 오류 (행 {row}): {str(e)}")
+                    continue
+            
+            # 분석 완료 후 테이블 업데이트
+            self.my_products_log_signal.emit("📊 가격분석 완료! 테이블을 업데이트합니다...")
+            
+            # 완료 시그널 발송 (UI 제어 해제 및 진행률 위젯 숨기기)
+            self.my_products_finished_signal.emit()
                 
         except Exception as e:
-            self.log_message(f"❌ 내 상품 불러오기 오류: {str(e)}")
-            # 오류 시에도 UI 제어 해제
-            self.set_tabs_enabled(True)
+            self.my_products_log_signal.emit(f"❌ 내 상품 불러오기 오류: {str(e)}")
+            # 오류 시에도 완료 시그널 발송
+            self.my_products_finished_signal.emit()
     
     def load_products_from_json(self):
         """JSON 파일에서 상품 정보 불러오기"""
@@ -5366,23 +5545,33 @@ class Main(QMainWindow):
             self.display_current_page()
     
     def display_current_page(self):
-        """현재 페이지 상품들을 테이블에 표시"""
+        """현재 페이지 상품들을 테이블에 표시 - 대용량 데이터 최적화"""
         try:
+            # 대용량 데이터 처리 시작 로그
+            if len(self.all_products) > 1000:
+                self.log_message(f"🔄 페이지 {self.current_page + 1} 로딩 중... (대용량 데이터 처리)")
+            
             start_idx = self.current_page * self.page_size
             end_idx = min(start_idx + self.page_size, len(self.all_products))
             
             current_page_products = self.all_products[start_idx:end_idx]
             
-            # 테이블에 현재 페이지 상품들만 표시
-            self.display_products_in_table(current_page_products)
+            # UI 업데이트를 위한 이벤트 처리
+            from PyQt6.QtWidgets import QApplication
+            QApplication.processEvents()
+            
+            # 테이블에 현재 페이지 상품들만 표시 (배치 처리)
+            self.display_products_in_table_optimized(current_page_products)
             
             # 페이지 정보 업데이트
             self.update_pagination_info()
             
-            self.log_message(f"📄 페이지 {self.current_page + 1}/{self.total_pages} 표시 ({len(current_page_products)}개 상품)")
+            self.log_message(f"📄 페이지 {self.current_page + 1}/{self.total_pages} 표시 완료 ({len(current_page_products)}개 상품)")
             
         except Exception as e:
             self.log_error(f"페이지 표시 오류: {str(e)}")
+            # 오류 발생 시에도 UI 제어 해제
+            self.set_tabs_enabled(True)
     
     def update_pagination_info(self):
         """페이지네이션 정보 업데이트"""
@@ -5537,11 +5726,29 @@ class Main(QMainWindow):
             
             self.log_message(f"📊 총 {len(products)}개 상품을 {self.page_size}개씩 {self.total_pages}페이지로 나누어 표시")
             
-            # 첫 번째 페이지 표시
-            self.display_current_page()
+            # 대용량 데이터 처리를 위한 지연 로딩
+            if len(products) > 1000:
+                self.log_message("⚠️ 대용량 데이터 감지: 안전한 처리를 위해 지연 로딩 적용")
+                # UI 업데이트를 위한 이벤트 처리
+                from PyQt6.QtWidgets import QApplication
+                QApplication.processEvents()
+            
+            # 첫 번째 페이지 표시 (비동기 처리)
+            QTimer.singleShot(100, self.display_current_page)
+            
+            # 대용량 데이터 처리 후 메모리 정리
+            if len(products) > 1000:
+                def cleanup_memory():
+                    import gc
+                    gc.collect()
+                    self.log_message("🧹 대용량 데이터 처리 완료: 메모리 정리 완료")
+                
+                QTimer.singleShot(2000, cleanup_memory)  # 2초 후 메모리 정리
                 
         except Exception as e:
             self.log_error(f"상품 표시 오류: {str(e)}")
+            # 오류 시에도 UI 제어 해제
+            self.set_tabs_enabled(True)
     
     def analyze_my_products_prices(self):
         """내 상품들의 가격 분석 시작 - 페이지별 순차 처리"""
@@ -5574,12 +5781,12 @@ class Main(QMainWindow):
             self.log_message(f"📄 페이지별 순차 분석: {self.total_pages}페이지 ({self.page_size}개씩)")
             
             # 가격분석 진행률 위젯 표시
-            self.price_progress_widget.show_progress(
-                title="💰 가격 분석 진행률",
-                total=len(self.all_products),
-                current=0,
-                status="가격 분석 시작..."
-            )
+            self.price_progress_widget.show()
+            self.update_price_progress_widget(0, len(self.all_products), "가격 분석 시작...")
+            
+            # 가격수정 진행률 위젯도 함께 표시 (업로드 위젯 재사용)
+            self.upload_progress_widget.show()
+            self.update_upload_progress_widget(0, 100, "가격 수정 대기 중...")
             
             # 진행률 위젯 표시 (기존)
             self.progress_widget.update_progress(
@@ -5941,6 +6148,9 @@ class Main(QMainWindow):
             total_updated = 0
             total_cancelled = 0
             total_failed = 0
+            
+            # 가격수정 진행률 추적용 카운터
+            price_update_progress = 0
 
             # 현재 페이지부터 시작
             start_page = self.current_page
@@ -5957,8 +6167,9 @@ class Main(QMainWindow):
                 end_idx = min(start_idx + self.page_size, len(self.all_products))
                 current_page_products = self.all_products[start_idx:end_idx]
 
-                # 해당 페이지로 이동
-                QTimer.singleShot(0, lambda p=page_num: self.display_page_safe(p))
+                # 해당 페이지로 이동 (시그널 사용)
+                self.price_analysis_log_signal.emit(f"페이지 {page_num + 1}로 이동 중...")
+                # 페이지 이동은 메인 스레드에서 처리해야 함
                 import time
                 time.sleep(1)  # 페이지 전환 대기
 
@@ -5973,23 +6184,18 @@ class Main(QMainWindow):
                 total_analyzed += page_analyzed
                 total_failed += page_failed
 
-                # 진행률 위젯 업데이트 (분석 단계)
+                # 진행률 위젯 업데이트 (분석 단계) - 시그널 사용
                 status_text = f"💰 가격 분석 진행 중"
                 detail_text = f"페이지 {page_num + 1}/{self.total_pages} - 분석 완료: {total_analyzed}개"
                 
-                QTimer.singleShot(0, lambda: self.progress_widget.update_progress(
-                    total_analyzed, 
-                    len(self.all_products), 
-                    status_text, 
-                    detail_text
-                ))
+                self.price_analysis_log_signal.emit(f"진행률 업데이트: {total_analyzed}/{len(self.all_products)}")
                 
-                # 가격분석 진행률 위젯 업데이트
-                QTimer.singleShot(0, lambda: self.update_price_progress_widget(
+                # 가격분석 진행률 위젯 업데이트 (시그널 사용)
+                self.update_price_progress_signal.emit(
                     total_analyzed, 
                     len(self.all_products), 
                     f"{status_text} - {detail_text}"
-                ))
+                )
 
                 self.price_analysis_log_signal.emit(f"✅ 페이지 {page_num + 1} 최저가 검색 완료: 분석 {page_analyzed}개, 실패 {page_failed}개")
 
@@ -6008,6 +6214,12 @@ class Main(QMainWindow):
                     self.price_analysis_log_signal.emit(f"📋 페이지 {page_num + 1}: 가격 수정이 필요한 상품이 없습니다.")
                 else:
                     self.price_analysis_log_signal.emit(f"📊 페이지 {page_num + 1}: {len(page_products_to_update)}개 상품 가격 수정 시작")
+                    
+                    # 가격수정 진행률 위젯 업데이트 (첫 번째 페이지에서 총 개수 설정)
+                    if page_num == 0:
+                        total_update_count = sum(1 for row in range(self.price_table.rowCount()) 
+                                               if self.price_table.item(row, 5) and "수정 필요" in self.price_table.item(row, 5).text())
+                        self.update_upload_progress_widget(0, total_update_count, "가격 수정 시작...")
 
                     # 현재 페이지 상품들 가격 수정
                     page_updated = 0
@@ -6031,6 +6243,13 @@ class Main(QMainWindow):
                                 self.all_products[global_idx]['status'] = "✅ 수정 완료"
                                 page_updated += 1
                                 total_updated += 1
+                                price_update_progress += 1
+                                
+                                # 가격수정 진행률 위젯 업데이트
+                                total_update_count = sum(1 for row in range(self.price_table.rowCount()) 
+                                                       if self.price_table.item(row, 5) and "수정 필요" in self.price_table.item(row, 5).text())
+                                self.update_upload_progress_widget(price_update_progress, total_update_count, f"가격 수정 중: {product_name[:20]}...")
+                                
                                 self.price_analysis_log_signal.emit(f"✅ 가격 수정 완료: {product_name[:20]}... → ¥{suggested_price:,}")
                             elif result == "cancelled":
                                 self.price_analysis_table_update_signal.emit(local_row, 5, "❌ 상품 수정 취소")
@@ -6066,22 +6285,22 @@ class Main(QMainWindow):
             self.price_analysis_log_signal.emit(f"   - 수정 취소: {total_cancelled}개")
             self.price_analysis_log_signal.emit(f"   - 검색 실패: {total_failed}개")
 
-            # 진행률 위젯 완료 상태
-            QTimer.singleShot(0, lambda: self.progress_widget.set_task_complete(
+            # 진행률 위젯 완료 상태 (시그널 사용)
+            self.progress_complete_signal.emit(
                 "가격 분석 완료", 
                 f"분석: {total_analyzed}개, 수정: {total_updated}개"
-            ))
+            )
+            
+            # 가격수정 진행률 위젯도 완료 상태로 설정
+            self.upload_progress_widget.hide()
 
             # UI 제어 해제 (시그널로)
             self.price_analysis_finished_signal.emit()
 
         except Exception as e:
             self.price_analysis_log_signal.emit(f"❌ 페이지별 순차 처리 오류: {str(e)}")
-            # 오류 시 진행률 위젯에 오류 표시
-            QTimer.singleShot(0, lambda: self.progress_widget.set_task_error(
-                "가격 분석 오류", 
-                str(e)
-            ))
+            # 오류 시 진행률 위젯에 오류 표시 (시그널 사용)
+            self.progress_error_signal.emit("가격 분석 오류", str(e))
             self.price_analysis_finished_signal.emit()
     
     def display_page_safe(self, page_num):
@@ -6504,42 +6723,42 @@ class Main(QMainWindow):
         except Exception as e:
             self.log_message(f"❌ 단일 상품 분석 오류: {str(e)}")
     
-    def update_single_product_price(self, row):
-        """단일 상품 가격 수정"""
-        try:
-            product_name = self.price_table.item(row, 0).text()
-            suggested_price_item = self.price_table.item(row, 3)
+    # def update_single_product_price(self, row):
+    #     """단일 상품 가격 수정"""
+    #     try:
+    #         product_name = self.price_table.item(row, 0).text()
+    #         suggested_price_item = self.price_table.item(row, 3)
             
-            if not suggested_price_item or "계산 필요" in suggested_price_item.text():
-                QMessageBox.warning(self, "경고", "먼저 가격 분석을 실행해주세요.")
-                return
+    #         if not suggested_price_item or "계산 필요" in suggested_price_item.text():
+    #             QMessageBox.warning(self, "경고", "먼저 가격 분석을 실행해주세요.")
+    #             return
             
-            # 제안가에서 숫자만 추출
-            import re
-            suggested_price_text = suggested_price_item.text()
-            numbers = re.findall(r'\d+', suggested_price_text.replace(',', ''))
-            suggested_price = int(''.join(numbers)) if numbers else 0
+    #         # 제안가에서 숫자만 추출
+    #         import re
+    #         suggested_price_text = suggested_price_item.text()
+    #         numbers = re.findall(r'\d+', suggested_price_text.replace(',', ''))
+    #         suggested_price = int(''.join(numbers)) if numbers else 0
             
-            if suggested_price <= 0:
-                QMessageBox.warning(self, "경고", "유효한 제안가가 없습니다.")
-                return
+    #         if suggested_price <= 0:
+    #             QMessageBox.warning(self, "경고", "유효한 제안가가 없습니다.")
+    #             return
             
-            self.log_message(f"💰 가격 수정 시작: {product_name[:30]}... → ¥{suggested_price:,}")
+    #         self.log_message(f"💰 가격 수정 시작: {product_name[:30]}... → ¥{suggested_price:,}")
             
-            # 실제 BUYMA 가격 수정 로직 (별도 스레드에서 실행)
-            import threading
+    #         # 실제 BUYMA 가격 수정 로직 (별도 스레드에서 실행)
+    #         import threading
             
-            def update_price():
-                # 여기에 실제 BUYMA 가격 수정 로직 구현
-                # self.update_buyma_product_price(product_name, suggested_price)
-                self.log_message(f"✅ 가격 수정 완료: {product_name[:20]}...")
-                self.price_table.setItem(row, 5, QTableWidgetItem("✅ 수정 완료"))
+    #         def update_price():
+    #             # 여기에 실제 BUYMA 가격 수정 로직 구현
+    #             # self.update_buyma_product_price(product_name, suggested_price)
+    #             self.log_message(f"✅ 가격 수정 완료: {product_name[:20]}...")
+    #             self.price_table.setItem(row, 5, QTableWidgetItem("✅ 수정 완료"))
             
-            thread = threading.Thread(target=update_price, daemon=True)
-            thread.start()
+    #         thread = threading.Thread(target=update_price, daemon=True)
+    #         thread.start()
             
-        except Exception as e:
-            self.log_message(f"❌ 가격 수정 오류: {str(e)}")
+    #     except Exception as e:
+    #         self.log_message(f"❌ 가격 수정 오류: {str(e)}")
     
     def extract_detailed_info(self, driver, product_url):
         """상품 상세 정보 추출"""
@@ -10269,6 +10488,10 @@ class Main(QMainWindow):
                 QMessageBox.warning(self, "경고", "등록된 주력 상품이 없습니다.\n먼저 주력 상품을 추가해주세요.")
                 return
             
+            # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
+            self.switch_to_monitoring_tab()
+            self.set_tabs_enabled(False)
+            
             # UI 상태 변경
             self.fav_start_analysis_btn.setEnabled(False)
             self.fav_start_analysis_btn.setText("🔄 진행 중...")
@@ -10513,6 +10736,10 @@ class Main(QMainWindow):
                 QMessageBox.warning(self, "로그인 필요", "BUYMA 로그인이 필요합니다.\n설정 탭에서 로그인을 완료해주세요.")
                 return
             
+            # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
+            self.switch_to_monitoring_tab()
+            self.set_tabs_enabled(False)
+            
             self.log_message(f"🔍 주력상품 가격확인 시작: {len(self.favorite_products)}개")
             
             # 진행률 위젯 표시
@@ -10534,18 +10761,12 @@ class Main(QMainWindow):
                     
                     self.log_message(f"📊 분석 중: {product_name} ({i+1}/{len(self.favorite_products)})")
                     
-                    # 경쟁사 최저가 조회 (시뮬레이션)
-                    competitor_price = self.get_competitor_price_simulation(product_name)
+                    # 실제 BUYMA 최저가 조회 (get_buyma_lowest_price_for_favorite 사용)
+                    lowest_price = self.get_buyma_lowest_price_for_favorite(product_name)
                     
-                    # 현재가와 최저가 비교
-                    if current_price <= competitor_price:
-                        # 현재가가 최저가보다 낮거나 같으면 그냥 놔둠
-                        status = "✅ 현재가 적정"
-                        suggested_price = current_price
-                        price_diff = 0
-                    else:
-                        # 현재가가 최저가보다 높으면 제안가 계산
-                        suggested_price = competitor_price - discount_amount
+                    if lowest_price:
+                        # 제안가 계산 (최저가 - 할인금액)
+                        suggested_price = max(lowest_price - discount_amount, 0)
                         
                         # 가격차이 계산 (제안가 - 현재가)
                         price_diff = suggested_price - current_price
@@ -10557,13 +10778,24 @@ class Main(QMainWindow):
                         else:
                             # 가격차이가 설정값 이내면
                             status = "💰 가격 수정 필요"
-                    
-                    # 결과 업데이트
-                    product['competitor_price'] = competitor_price
-                    product['suggested_price'] = suggested_price
-                    product['price_diff'] = price_diff  # 가격차이 저장
-                    product['status'] = status
-                    product['last_check'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+                        
+                        # 상품 데이터 업데이트
+                        product['lowest_price'] = lowest_price
+                        product['suggested_price'] = suggested_price
+                        product['price_difference'] = current_price - lowest_price  # 내 가격 - 최저가
+                        product['status'] = status
+                        product['last_check'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+                        
+                        self.log_message(f"✅ {product_name[:20]}... - 최저가: ¥{lowest_price:,}, 제안가: ¥{suggested_price:,}, 차이: {price_diff:+,}엔")
+                        
+                    else:
+                        # 최저가 검색 실패
+                        product['lowest_price'] = 0
+                        product['suggested_price'] = 0
+                        product['price_difference'] = 0
+                        product['status'] = "❌ 최저가 검색 실패"
+                        product['last_check'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+                        self.log_message(f"⚠️ {product_name[:20]}... - 최저가 검색 실패")
                     
                     # 진행률 위젯 업데이트
                     self.progress_widget.update_progress(
@@ -10589,12 +10821,17 @@ class Main(QMainWindow):
                 f"총 {len(self.favorite_products)}개 상품 확인 완료"
             )
             
+            # UI 제어 해제
+            self.set_tabs_enabled(True)
+            
             self.log_message("🔍 주력상품 가격확인 완료")
             
         except Exception as e:
             self.log_message(f"❌ 주력상품 가격확인 오류: {str(e)}")
             # 오류 시 진행률 위젯에 오류 표시
             self.progress_widget.set_task_error("주력상품 가격확인 오류", str(e))
+            # UI 제어 해제
+            self.set_tabs_enabled(True)
             QMessageBox.critical(self, "오류", f"가격확인 중 오류가 발생했습니다:\n{str(e)}")
     
     @safe_slot
@@ -10609,6 +10846,10 @@ class Main(QMainWindow):
             if not hasattr(self, 'is_logged_in') or not self.is_logged_in:
                 QMessageBox.warning(self, "로그인 필요", "BUYMA 로그인이 필요합니다.\n설정 탭에서 로그인을 완료해주세요.")
                 return
+            
+            # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
+            self.switch_to_monitoring_tab()
+            self.set_tabs_enabled(False)
             
             # 수정이 필요한 상품들 찾기
             need_update = [p for p in self.favorite_products if p.get('status') == '💰 가격 수정 필요']
@@ -10915,13 +11156,12 @@ class Main(QMainWindow):
                     
                     self.log_message(f"📊 분석 중 ({i+1}/{len(self.favorite_products)}): {product_name}")
                     
-                    # 진행률 위젯 업데이트 (1단계)
-                    QTimer.singleShot(0, lambda idx=i: self.progress_widget.update_progress(
-                        idx + 1, 
+                    # 진행률 위젯 업데이트 (1단계) - 시그널 사용
+                    self.update_price_progress_signal.emit(
+                        i + 1, 
                         len(self.favorite_products) * 2,  # 2단계이므로 총 개수 * 2
-                        "⭐ 주력상품 가격확인", 
-                        f"분석 중: {product_name[:20]}..."
-                    ))
+                        f"⭐ 주력상품 가격확인 - 분석 중: {product_name[:20]}..."
+                    )
                     
                     # 가격관리 탭의 가격확인 로직 활용
                     competitor_price = self.get_buyma_lowest_price_for_favorite(product_name)
@@ -10986,6 +11226,11 @@ class Main(QMainWindow):
             
             if len(need_update) == 0:
                 self.log_message("📋 가격 수정이 필요한 상품이 없습니다.")
+                # 수정할 상품이 없어도 진행률 위젯을 완료 상태로 설정
+                QTimer.singleShot(0, lambda: self.progress_widget.set_task_complete(
+                    "주력상품 통합 처리 완료", 
+                    f"분석: {analyzed_count}개, 수정: 0개"
+                ))
             else:
                 self.log_message(f"📊 {len(need_update)}개 상품 가격 수정 시작")
                 
@@ -11051,6 +11296,12 @@ class Main(QMainWindow):
                     except Exception as e:
                         self.log_message(f"❌ 가격 수정 오류: {product.get('name', 'Unknown')} - {str(e)}")
                         continue
+                
+                # 수정 작업 완료 후 진행률 위젯 완료 상태
+                QTimer.singleShot(0, lambda: self.progress_widget.set_task_complete(
+                    "주력상품 통합 처리 완료", 
+                    f"분석: {analyzed_count}개, 수정: {updated_count}개"
+                ))
             
             # 최종 테이블 업데이트 및 저장
             QTimer.singleShot(0, self.update_favorite_table)
@@ -11062,12 +11313,6 @@ class Main(QMainWindow):
             self.log_message(f"   - 분석 완료: {analyzed_count}개")
             self.log_message(f"   - 가격 수정: {updated_count}개")
             self.log_message(f"   - 처리 실패: {failed_count}개")
-            
-            # 진행률 위젯 완료 상태
-            QTimer.singleShot(0, lambda: self.progress_widget.set_task_complete(
-                "주력상품 통합 처리 완료", 
-                f"분석: {analyzed_count}개, 수정: {updated_count}개"
-            ))
             
             # UI 상태 복원
             QTimer.singleShot(0, self.restore_favorite_analysis_ui)
@@ -11091,47 +11336,119 @@ class Main(QMainWindow):
             self.log_message(f"UI 복원 오류: {str(e)}")
     
     def get_buyma_lowest_price_for_favorite(self, product_name):
-        """주력상품용 BUYMA 최저가 조회 (가격관리 로직 활용)"""
+        """주력상품용 BUYMA 최저가 조회 (search_buyma_lowest_price 로직 활용)"""
         try:
-            # 상품명 정제 (商品ID 이전까지만)
-            clean_name = product_name
-            if '商品ID' in clean_name:
-                clean_name = clean_name.split('商品ID')[0].strip()
+            # 1. 상품명에서 실제 검색어 추출 (商品ID 이전까지)
+            search_name = product_name
+            if "商品ID" in product_name:
+                search_name = product_name.split("商品ID")[0].strip()
             
-            # 가격관리 탭의 최저가 검색 로직 활용
-            if hasattr(self, 'shared_driver') and self.shared_driver:
-                # BUYMA 검색 페이지로 이동
-                search_url = f"https://www.buyma.com/search/?q={clean_name}&sort=price_asc"
-                self.shared_driver.get(search_url)
-                
-                import time
-                time.sleep(2)
-                
-                # 최저가 추출 로직 (가격관리와 동일)
-                from selenium.webdriver.common.by import By
+            # 추가 정리 (줄바꿈, 특수문자 제거)
+            search_name = search_name.replace("\n", " ").strip()
+            
+            self.log_message(f"🔍 주력상품 검색어: '{search_name}'")
+            
+            if not self.shared_driver:
+                self.log_message("❌ 브라우저가 초기화되지 않았습니다.")
+                return None
+            
+            # 2. BUYMA 검색 URL로 이동 (첫 페이지)
+            page_number = 1
+            lowest_price = float('inf')
+            found_products = 0
+            
+            while True:
+                search_url = f"https://www.buyma.com/r/-R120/{search_name}_{page_number}"
+                self.log_message(f"🌐 주력상품 페이지 {page_number} 접속: {search_url}")
                 
                 try:
-                    # 가격 요소 찾기
-                    price_elements = self.shared_driver.find_elements(By.CSS_SELECTOR, ".price, .item-price, [class*='price']")
-                    
-                    if price_elements:
-                        # 첫 번째 상품의 가격 추출
-                        price_text = price_elements[0].text.strip()
-                        # 숫자만 추출
-                        import re
-                        price_match = re.search(r'[\d,]+', price_text.replace('¥', '').replace(',', ''))
-                        if price_match:
-                            return int(price_match.group().replace(',', ''))
-                    
+                    self.shared_driver.get(search_url)
+                    time.sleep(3)
                 except Exception as e:
-                    self.log_message(f"가격 추출 오류: {str(e)}")
+                    # 페이지 로딩 타임아웃 또는 네트워크 오류
+                    self.log_message(f"⏱️ 페이지 {page_number} 로딩 실패: {str(e)}")
+                    break
+                
+                # 3. ul.product_lists 요소 로딩 대기 (가격관리 탭과 동일한 로직)
+                from selenium.webdriver.common.by import By
+                from selenium.webdriver.support.ui import WebDriverWait
+                from selenium.webdriver.support import expected_conditions as EC
+                
+                try:
+                    # 상품 리스트 로딩 대기 (최대 10초)
+                    product_list = WebDriverWait(self.shared_driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "ul.product_lists"))
+                    )
                     
-            # 실패 시 시뮬레이션 가격 반환
-            return self.get_competitor_price_simulation(product_name)
+                    # 4. 각 li 요소들 (상품들) 수집
+                    product_items = product_list.find_elements(By.TAG_NAME, "li")
+                    
+                    if not product_items:
+                        self.log_message(f"⚠️ 페이지 {page_number}에서 상품을 찾을 수 없습니다.")
+                        break
+                    
+                    self.log_message(f"📦 페이지 {page_number}에서 {len(product_items)}개 상품 발견")
+                    
+                    # 5. 각 상품 정보 분석
+                    for item in product_items:
+                        try:
+                            # 6. 상품명 추출 (div.product_name)
+                            name_elem = item.find_element(By.CSS_SELECTOR, "div.product_name")
+                            item_name = name_elem.text.strip()
+                            
+                            # 7. 검색한 상품명이 포함되어 있는지 확인
+                            if search_name.lower() in item_name.lower():
+                                # 8. 상품가격 추출 (span.Price_Txt)
+                                try:
+                                    price_elem = item.find_element(By.CSS_SELECTOR, "span.Price_Txt")
+                                    price_text = price_elem.text.strip()
+                                    
+                                    # 가격에서 숫자만 추출 (¥12,000 → 12000)
+                                    import re
+                                    price_numbers = re.findall(r'[\d,]+', price_text)
+                                    if price_numbers:
+                                        price = int(price_numbers[0].replace(',', ''))
+                                        
+                                        # 9. 최저가 비교 및 갱신
+                                        if price < lowest_price:
+                                            lowest_price = price
+                                            self.log_message(f"💰 새로운 최저가 발견: ¥{price:,} - {item_name[:30]}...")
+                                        
+                                        found_products += 1
+                                    
+                                except Exception as e:
+                                    # 가격 정보가 없는 상품은 건너뛰기
+                                    continue
+                            
+                        except Exception as e:
+                            # 개별 상품 처리 오류는 건너뛰기
+                            continue
+                    
+                    # 10. 다음 페이지 확인 (li 개수가 120개면 다음 페이지 있음)
+                    if len(product_items) >= 120:
+                        page_number += 1
+                        self.log_message(f"➡️ 다음 페이지({page_number})로 이동...")
+                        time.sleep(2)  # 페이지 간 딜레이
+                    else:
+                        # 마지막 페이지 도달
+                        self.log_message(f"✅ 모든 페이지 검색 완료 (총 {page_number} 페이지)")
+                        break
+                
+                except Exception as e:
+                    self.log_message(f"❌ 페이지 {page_number} 로딩 실패: {str(e)}")
+                    continue
             
+            # 11. 결과 반환
+            if lowest_price != float('inf'):
+                self.log_message(f"🎉 검색 완료: 총 {found_products}개 상품 중 최저가 ¥{lowest_price:,}")
+                return lowest_price
+            else:
+                self.log_message(f"⚠️ '{search_name}' 상품을 찾을 수 없습니다.")
+                return None
+                
         except Exception as e:
-            self.log_message(f"최저가 조회 오류: {str(e)}")
-            return 0
+            self.log_message(f"❌ 주력상품 최저가 검색 오류: {str(e)}")
+            return None
     
     def update_buyma_product_price_for_favorite(self, product, new_price, is_auto_mode):
         """주력상품용 BUYMA 가격 수정 (가격관리 로직 활용)"""
@@ -12426,13 +12743,377 @@ class Main(QMainWindow):
             self.upload_progress_widget.update_progress(current, total, status)
         except Exception as e:
             self.log_message(f"⚠️ 업로드 진행률 위젯 업데이트 오류: {str(e)}")
+            pass
     
     def update_price_progress_widget(self, current, total, status):
         """가격분석 진행률 위젯 업데이트"""
         try:
             self.price_progress_widget.update_progress(current, total, status)
         except Exception as e:
-            self.log_message(f"⚠️ 가격분석 진행률 위젯 업데이트 오류: {str(e)}")
+            self.log_message(f"⚠️ 업로드 진행률 위젯 업데이트 오류: {str(e)}")
+            pass
+        
+    def display_products_in_table_optimized(self, products):
+        """대용량 데이터를 위한 최적화된 테이블 표시"""
+        try:
+            # 테이블 업데이트 시작 전 신호 차단
+            self.price_table.setUpdatesEnabled(False)
+            
+            # 테이블 초기화
+            self.price_table.setRowCount(0)
+            self.price_table.setRowCount(len(products))
+            
+            # 배치 처리로 데이터 입력
+            for row, product in enumerate(products):
+                try:
+                    # 기본 상품 정보
+                    self.price_table.setItem(row, 0, QTableWidgetItem(product.get('title', '')))
+                    self.price_table.setItem(row, 1, QTableWidgetItem(product.get('current_price', '')))
+                    self.price_table.setItem(row, 2, QTableWidgetItem('분석 필요'))
+                    self.price_table.setItem(row, 3, QTableWidgetItem('계산 필요'))
+                    self.price_table.setItem(row, 4, QTableWidgetItem('-'))
+                    self.price_table.setItem(row, 5, QTableWidgetItem('대기 중'))
+                    
+                    # 액션 버튼은 나중에 추가 (성능 최적화)
+                    if row < 50:  # 처음 50개만 즉시 버튼 추가
+                        self.add_action_buttons_to_row(row)
+                    
+                    # 10개마다 UI 업데이트
+                    if row % 10 == 0:
+                        from PyQt6.QtWidgets import QApplication
+                        QApplication.processEvents()
+                        
+                except Exception as e:
+                    self.log_message(f"⚠️ 행 {row} 처리 중 오류: {str(e)}")
+                    continue
+            
+            # 테이블 업데이트 재개
+            self.price_table.setUpdatesEnabled(True)
+            
+            # 나머지 버튼들은 지연 추가
+            if len(products) > 50:
+                QTimer.singleShot(500, lambda: self.add_remaining_action_buttons(50, len(products)))
+            
+        except Exception as e:
+            self.log_message(f"❌ 최적화된 테이블 표시 오류: {str(e)}")
+            self.price_table.setUpdatesEnabled(True)
+    
+    def add_remaining_action_buttons(self, start_row, total_rows):
+        """나머지 액션 버튼들을 지연 추가"""
+        try:
+            batch_size = 20
+            end_row = min(start_row + batch_size, total_rows)
+            
+            for row in range(start_row, end_row):
+                self.add_action_buttons_to_row(row)
+            
+            # 다음 배치가 있으면 계속 처리
+            if end_row < total_rows:
+                QTimer.singleShot(100, lambda: self.add_remaining_action_buttons(end_row, total_rows))
+            else:
+                self.log_message("✅ 모든 액션 버튼 추가 완료")
+                
+        except Exception as e:
+            self.log_message(f"⚠️ 액션 버튼 추가 중 오류: {str(e)}")
+    
+    def add_action_buttons_to_row(self, row):
+        """특정 행에 주력상품 추가 액션 버튼만 추가"""
+        try:
+            action_layout = QHBoxLayout()
+            action_widget = QWidget()
+            action_layout.setContentsMargins(5, 2, 5, 2)
+            action_layout.setSpacing(3)
+            
+            # 주력상품 추가 버튼만 추가
+            add_favorite_btn = QPushButton("⭐")
+            add_favorite_btn.setToolTip("주력상품에 추가")
+            add_favorite_btn.setFixedSize(25, 25)
+            add_favorite_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #ffc107;
+                    color: white;
+                    border: none;
+                    border-radius: 3px;
+                    font-weight: bold;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #e0a800;
+                }
+                QPushButton:pressed {
+                    background-color: #d39e00;
+                }
+            """)
+            
+            # 기존 함수 활용하여 버튼 클릭 이벤트 연결
+            add_favorite_btn.clicked.connect(lambda: self.add_to_favorite_from_price_table(row))
+            
+            action_layout.addWidget(add_favorite_btn)
+            action_layout.addStretch()  # 왼쪽 정렬
+            
+            action_widget.setLayout(action_layout)
+            self.price_table.setCellWidget(row, 6, action_widget)
+            
+        except Exception as e:
+            self.log_message(f"❌ 액션 버튼 추가 오류 (행 {row}): {str(e)}")
+            # update_btn.setMaximumWidth(30)
+            # update_btn.setToolTip("가격 수정")
+            # update_btn.clicked.connect(lambda checked, r=row: self.update_single_product_price(r))
+            
+            # # 주력상품 추가 버튼
+            favorite_btn = QPushButton("⭐")
+            favorite_btn.setMaximumWidth(30)
+            favorite_btn.setToolTip("주력상품 추가")
+            favorite_btn.clicked.connect(lambda checked, r=row: self.add_to_favorite_from_price_table(r))
+            
+            # action_layout.addWidget(analyze_btn)
+            # action_layout.addWidget(update_btn)
+            action_layout.addWidget(favorite_btn)
+            action_layout.setContentsMargins(2, 2, 2, 2)
+            
+            action_widget.setLayout(action_layout)
+            self.price_table.setCellWidget(row, 6, action_widget)
+            
+        except Exception as e:
+            self.log_message(f"⚠️ 행 {row} 액션 버튼 추가 오류: {str(e)}")
+            
+    @pyqtSlot(int, int, str)
+    def update_price_progress_widget_safe(self, current, total, status):
+        """스레드 안전 진행률 위젯 업데이트"""
+        try:
+            self.price_progress_widget.update_progress(current, total, status)
+        except Exception as e:
+            self.log_message(f"⚠️ 진행률 위젯 업데이트 오류: {str(e)}")
+    
+    @pyqtSlot()
+    def on_my_products_finished(self):
+        """내 상품 크롤링 완료 처리"""
+        try:
+            # 분석된 데이터로 테이블 업데이트
+            self.update_price_analysis_table()
+            
+            self.hide_price_progress_widget()
+            self.set_tabs_enabled(True)
+            self.log_message("✅ 내 상품 크롤링 및 가격분석 완료")
+        except Exception as e:
+            self.log_message(f"⚠️ 크롤링 완료 처리 오류: {str(e)}")
+    
+    def update_price_analysis_table(self):
+        """가격분석 결과를 테이블에 반영"""
+        try:
+            # 현재 페이지의 상품들 가져오기
+            start_idx = self.current_page * self.page_size
+            end_idx = min(start_idx + self.page_size, len(self.all_products))
+            current_page_products = self.all_products[start_idx:end_idx]
+            
+            # 테이블 업데이트
+            for row, product in enumerate(current_page_products):
+                if row >= self.price_table.rowCount():
+                    break
+                    
+                # 최저가 업데이트
+                lowest_price = product.get('lowest_price', 0)
+                if lowest_price > 0:
+                    self.price_table.setItem(row, 2, QTableWidgetItem(f"¥{lowest_price:,}"))
+                else:
+                    self.price_table.setItem(row, 2, QTableWidgetItem("검색 실패"))
+                
+                # 제안가 업데이트
+                suggested_price = product.get('suggested_price', 0)
+                if suggested_price > 0:
+                    self.price_table.setItem(row, 3, QTableWidgetItem(f"¥{suggested_price:,}"))
+                else:
+                    self.price_table.setItem(row, 3, QTableWidgetItem("-"))
+                
+                # 가격차이 업데이트
+                price_difference = product.get('price_difference', 0)
+                if price_difference > 0:
+                    margin_text = f"+¥{price_difference:,} (비쌈)"
+                elif price_difference < 0:
+                    margin_text = f"¥{price_difference:,} (저렴함)"
+                else:
+                    margin_text = "¥0 (동일)" if lowest_price > 0 else "-"
+                
+                self.price_table.setItem(row, 4, QTableWidgetItem(margin_text))
+                
+                # 상태 업데이트
+                status = product.get('status', '분석 대기')
+                status_item = QTableWidgetItem(status)
+                
+                # 상태별 색상 설정
+                if "수정 필요" in status:
+                    status_item.setForeground(QBrush(QColor("#ffc107")))  # 노란색
+                elif "손실 예상" in status:
+                    status_item.setForeground(QBrush(QColor("#dc3545")))  # 빨간색
+                elif "검색 실패" in status:
+                    status_item.setForeground(QBrush(QColor("#6c757d")))  # 회색
+                else:
+                    status_item.setForeground(QBrush(QColor("#28a745")))  # 초록색
+                
+                self.price_table.setItem(row, 5, status_item)
+                
+                # 액션 버튼 추가 (주력상품 추가만)
+                self.add_price_action_button(row, product)
+            
+            self.log_message("📊 테이블 업데이트 완료")
+            
+        except Exception as e:
+            self.log_message(f"❌ 테이블 업데이트 오류: {str(e)}")
+    
+    def add_price_action_button(self, row, product):
+        """가격분석 테이블에 주력상품 추가 액션 버튼만 추가"""
+        try:
+            # 액션 버튼 위젯 생성
+            action_widget = QWidget()
+            action_layout = QHBoxLayout(action_widget)
+            action_layout.setContentsMargins(5, 2, 5, 2)
+            action_layout.setSpacing(3)
+            
+            # 주력상품 추가 버튼
+            add_favorite_btn = QPushButton("⭐")
+            add_favorite_btn.setToolTip("주력상품에 추가")
+            add_favorite_btn.setFixedSize(25, 25)
+            add_favorite_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #ffc107;
+                    color: white;
+                    border: none;
+                    border-radius: 3px;
+                    font-weight: bold;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #e0a800;
+                }
+                QPushButton:pressed {
+                    background-color: #d39e00;
+                }
+            """)
+            
+            # 기존 함수 활용하여 버튼 클릭 이벤트 연결
+            add_favorite_btn.clicked.connect(lambda: self.add_to_favorite_from_price_table(row))
+            
+            action_layout.addWidget(add_favorite_btn)
+            action_layout.addStretch()  # 왼쪽 정렬
+            
+            # 테이블에 위젯 설정 (액션 컬럼은 6번째)
+            self.price_table.setCellWidget(row, 6, action_widget)
+            
+        except Exception as e:
+            self.log_message(f"❌ 액션 버튼 추가 오류 (행 {row}): {str(e)}")
+            pass
+            
+    def analyze_existing_table_data(self):
+        """기존 테이블 데이터로 가격분석 실행"""
+        try:
+            # 가격분석 설정값 가져오기
+            discount = self.discount_amount.value()
+            min_margin = self.min_margin.value()
+            is_auto_mode = self.auto_mode.isChecked()
+            
+            self.my_products_log_signal.emit(f"🔍 기존 데이터 가격분석 시작 - 모드: {'🤖 자동' if is_auto_mode else '👤 수동'}")
+            
+            total_rows = self.price_table.rowCount()
+            
+            # 각 상품별 가격분석 실행
+            for row in range(total_rows):
+                try:
+                    # 테이블에서 상품 정보 가져오기
+                    product_name_item = self.price_table.item(row, 0)
+                    current_price_item = self.price_table.item(row, 1)
+                    
+                    if not product_name_item or not current_price_item:
+                        continue
+                        
+                    product_name = product_name_item.text()
+                    current_price_text = current_price_item.text()
+                    
+                    self.my_products_log_signal.emit(f"🔍 분석 중: {product_name[:30]}...")
+                    
+                    # 진행률 업데이트
+                    self.update_price_progress_signal.emit(
+                        row + 1, 
+                        total_rows, 
+                        f"가격분석 중: {product_name[:30]}..."
+                    )
+                    
+                    # BUYMA에서 해당 상품 검색하여 최저가 찾기
+                    lowest_price = self.search_buyma_lowest_price(product_name)
+                    
+                    if lowest_price:
+                        # 제안가 계산 (최저가 - 할인금액)
+                        suggested_price = max(lowest_price - discount, 0)
+                        
+                        # 현재가격에서 숫자만 추출 (¥31,100 → 31100)
+                        current_price_numbers = re.findall(r'[\d,]+', current_price_text)
+                        current_price = int(current_price_numbers[0].replace(',', '')) if current_price_numbers else 0
+                        
+                        # 마진 계산 (내 가격과 최저가의 차이)
+                        price_difference = current_price - lowest_price if current_price > 0 else 0
+                        
+                        # 테이블 업데이트 (시그널 사용)
+                        self.price_analysis_table_update_signal.emit(row, 2, f"¥{lowest_price:,}")
+                        self.price_analysis_table_update_signal.emit(row, 3, f"¥{suggested_price:,}")
+                        
+                        # 마진을 가격 차이로 표시
+                        if price_difference > 0:
+                            margin_text = f"+¥{price_difference:,} (비쌈)"
+                        elif price_difference < 0:
+                            margin_text = f"¥{price_difference:,} (저렴함)"
+                        else:
+                            margin_text = "¥0 (동일)"
+                        
+                        self.price_analysis_table_update_signal.emit(row, 4, margin_text)
+                        
+                        # 가격 수정 필요 상태 결정
+                        suggested_difference = suggested_price - current_price
+                        if suggested_difference >= -abs(min_margin):  # -500엔 이상이면 OK
+                            status = "💰 가격 수정 필요"
+                            self.my_products_log_signal.emit(f"✅ {product_name[:20]}... - 최저가: ¥{lowest_price:,}, 제안가: ¥{suggested_price:,}, 차이: {margin_text}")
+                        else:
+                            status = f"⚠️ 손실 예상 ({suggested_difference:+,}엔)"
+                            self.my_products_log_signal.emit(f"⚠️ 손실 예상: {product_name[:20]}... - 제안가 차이: {suggested_difference:+,}엔")
+                        
+                        self.price_analysis_table_update_signal.emit(row, 5, status)
+                        
+                    else:
+                        self.price_analysis_table_update_signal.emit(row, 2, "검색 실패")
+                        self.price_analysis_table_update_signal.emit(row, 5, "❌ 최저가 검색 실패")
+                        self.my_products_log_signal.emit(f"⚠️ {product_name[:20]}... - 최저가 검색 실패")
+                    
+                    # 딜레이
+                    time.sleep(2)
+                    
+                except Exception as e:
+                    self.my_products_log_signal.emit(f"❌ 상품 분석 오류 (행 {row}): {str(e)}")
+                    continue
+            
+            # 분석 완료
+            self.my_products_log_signal.emit("📊 기존 데이터 가격분석 완료!")
+            
+            # 완료 시그널 발송
+            self.my_products_finished_signal.emit()
+                
+        except Exception as e:
+            self.my_products_log_signal.emit(f"❌ 기존 데이터 가격분석 오류: {str(e)}")
+            # 오류 시에도 완료 시그널 발송
+            self.my_products_finished_signal.emit()
+    
+    @pyqtSlot(str, str)
+    def set_progress_complete(self, title, message):
+        """진행률 위젯 완료 상태 설정"""
+        try:
+            self.progress_widget.set_task_complete(title, message)
+        except Exception as e:
+            self.log_message(f"⚠️ 진행률 완료 상태 설정 오류: {str(e)}")
+    
+    @pyqtSlot(str, str)
+    def set_progress_error(self, title, error_message):
+        """진행률 위젯 오류 상태 설정"""
+        try:
+            self.progress_widget.set_task_error(title, error_message)
+        except Exception as e:
+            self.log_message(f"⚠️ 진행률 오류 상태 설정 오류: {str(e)}")
     
     def hide_upload_progress_widget(self):
         """업로드 진행률 위젯 숨기기"""
@@ -12447,6 +13128,96 @@ class Main(QMainWindow):
             self.price_progress_widget.hide()
         except Exception as e:
             self.log_message(f"⚠️ 가격분석 진행률 위젯 숨기기 오류: {str(e)}")
+    
+    def update_analyzed_prices(self):
+        """분석된 상품들의 가격 수정"""
+        # 로그인 상태 확인
+        if not hasattr(self, 'is_logged_in') or not self.is_logged_in:
+            QMessageBox.warning(
+                self, 
+                "로그인 필요", 
+                "가격 수정을 위해서는 먼저 BUYMA 로그인이 필요합니다.\n\n"
+                "설정 탭에서 '🔐 BUYMA 로그인' 버튼을 클릭하여 로그인해주세요."
+            )
+            return
+        
+        # 분석된 상품이 있는지 확인
+        if self.price_table.rowCount() == 0:
+            QMessageBox.warning(self, "경고", "먼저 '🔍 가격분석'을 실행해주세요.")
+            return
+        
+        # 수정이 필요한 상품 찾기
+        need_update = []
+        for row in range(self.price_table.rowCount()):
+            status_item = self.price_table.item(row, 5)  # 상태 컬럼
+            if status_item and "수정 필요" in status_item.text():
+                need_update.append(row)
+        
+        if not need_update:
+            QMessageBox.information(self, "정보", "수정이 필요한 상품이 없습니다.")
+            return
+        
+        # 확인 다이얼로그
+        reply = QMessageBox.question(
+            self,
+            "가격 수정 확인",
+            f"총 {len(need_update)}개 상품의 가격을 수정하시겠습니까?\n\n"
+            f"⚠️ 주의: 실제 BUYMA 상품 가격이 변경됩니다.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        self.log_message(f"💰 가격 수정 시작: {len(need_update)}개 상품")
+        
+        # 가격수정 진행률 위젯 표시 (업로드 위젯 재사용)
+        self.upload_progress_widget.show()
+        self.update_upload_progress_widget(0, len(need_update), "가격 수정 시작...")
+        
+        # 순차적으로 가격 수정 실행
+        success_count = 0
+        failed_count = 0
+        
+        for i, row in enumerate(need_update):
+            try:
+                product_name = self.price_table.item(row, 0).text()
+                self.log_message(f"💰 가격 수정 중 ({i+1}/{len(need_update)}): {product_name[:30]}...")
+                
+                # 가격수정 진행률 위젯 업데이트
+                self.update_upload_progress_widget(
+                    i + 1, 
+                    len(need_update), 
+                    f"가격 수정 중: {product_name[:30]}..."
+                )
+                
+                # 기존 가격 수정 함수 사용
+                result = self.update_single_product_price(row)
+                
+                if result:
+                    success_count += 1
+                    self.log_message(f"✅ 가격 수정 완료: {product_name[:30]}")
+                else:
+                    failed_count += 1
+                    self.log_message(f"❌ 가격 수정 실패: {product_name[:30]}")
+                
+            except Exception as e:
+                failed_count += 1
+                self.log_message(f"❌ 가격 수정 실패: {product_name[:30]} - {str(e)}")
+        
+        # 완료 메시지
+        self.log_message(f"🎉 가격 수정 완료! 성공: {success_count}개, 실패: {failed_count}개")
+        
+        # 가격수정 진행률 위젯 숨기기
+        self.upload_progress_widget.hide()
+        
+        QMessageBox.information(
+            self,
+            "가격 수정 완료",
+            f"가격 수정이 완료되었습니다.\n\n"
+            f"✅ 성공: {success_count}개\n"
+            f"❌ 실패: {failed_count}개"
+        )
     
     def show_crash_safe_confirmation(self, product_data, product_number, max_images):
         """크래시 방지 확인 다이얼로그 - 시그널/슬롯 방식"""
