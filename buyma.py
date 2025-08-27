@@ -6210,6 +6210,7 @@ class Main(QMainWindow):
             
             self.log_message(f"🚀 전체 상품 가격 수정 시작: {update_needed_count}개 상품")
             
+            # 커밋
             # 가격 관리 모드 확인
             is_auto_mode = self.auto_mode.isChecked()  # 올바른 변수명 사용
             mode_text = "🤖 자동" if is_auto_mode else "👤 수동"
