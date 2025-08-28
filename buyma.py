@@ -674,6 +674,10 @@ class Main(QMainWindow):
         # 크롤링된 상품 데이터 저장용
         self.crawled_products = []
         
+        # 작업 상태 변수 초기화
+        self.work_paused = False
+        self.work_stopped = False
+        
         self.init_ui()
         self.load_settings()
         
@@ -717,6 +721,96 @@ class Main(QMainWindow):
         
         # 모든 UI 초기화 완료 후 주력 상품 자동 로드
         self.load_favorite_products_on_startup()
+    
+    def toggle_work_pause(self):
+        """작업 일시정지/재시작 토글"""
+        try:
+            if not self.work_paused:
+                # 일시정지
+                self.work_paused = True
+                self.pause_work_btn.setText("▶️ 재시작")
+                self.pause_work_btn.setStyleSheet("""
+                    QPushButton {
+                        background: #28a745;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: bold;
+                        font-family: '맑은 고딕';
+                    }
+                    QPushButton:hover {
+                        background: #1e7e34;
+                    }
+                """)
+                self.log_message("⏸️ 작업이 일시정지되었습니다.")
+            else:
+                # 재시작
+                self.work_paused = False
+                self.pause_work_btn.setText("⏸️ 일시정지")
+                self.pause_work_btn.setStyleSheet("""
+                    QPushButton {
+                        background: #ffc107;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: bold;
+                        font-family: '맑은 고딕';
+                    }
+                    QPushButton:hover {
+                        background: #e0a800;
+                    }
+                """)
+                self.log_message("▶️ 작업이 재시작되었습니다.")
+        except Exception as e:
+            self.log_message(f"❌ 일시정지/재시작 오류: {str(e)}")
+    
+    def stop_all_work(self):
+        """모든 작업 중지"""
+        try:
+            self.work_stopped = True
+            self.work_paused = False
+            
+            # 크롤링 중지
+            if hasattr(self, 'start_crawling_btn'):
+                self.start_crawling_btn.setEnabled(True)
+                self.stop_crawling_btn.setEnabled(False)
+            
+            # UI 상태 복원
+            self.set_tabs_enabled(True)
+            self.disable_work_controls()
+            
+            # 진행률 위젯 숨기기
+            if hasattr(self, 'price_progress_widget'):
+                self.price_progress_widget.hide()
+            if hasattr(self, 'upload_progress_widget'):
+                self.upload_progress_widget.hide()
+            
+            self.log_message("⏹️ 모든 작업이 중지되었습니다.")
+            
+        except Exception as e:
+            self.log_message(f"❌ 작업 중지 오류: {str(e)}")
+    
+    def enable_work_controls(self):
+        """작업 제어 버튼 활성화"""
+        self.pause_work_btn.setEnabled(True)
+        self.stop_work_btn.setEnabled(True)
+        self.work_stopped = False
+        self.work_paused = False
+    
+    def disable_work_controls(self):
+        """작업 제어 버튼 비활성화"""
+        self.pause_work_btn.setEnabled(False)
+        self.stop_work_btn.setEnabled(False)
+        self.pause_work_btn.setText("⏸️ 일시정지")
+    
+    def check_work_status(self):
+        """작업 상태 확인 (워커 스레드에서 호출)"""
+        while self.work_paused and not self.work_stopped:
+            import time
+            time.sleep(0.5)
+        return not self.work_stopped
         
     def init_ui(self):
         """UI 초기화"""
@@ -2362,6 +2456,53 @@ class Main(QMainWindow):
         monitoring_layout.setSpacing(1)
         monitoring_layout.setContentsMargins(15, 0, 15, 15)
         
+        # 작업 제어 버튼들 추가
+        control_layout = QHBoxLayout()
+        
+        self.pause_work_btn = QPushButton("⏸️ 일시정지")
+        self.pause_work_btn.setMinimumHeight(35)
+        self.pause_work_btn.setStyleSheet("""
+            QPushButton {
+                background: #ffc107;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: bold;
+                font-family: '맑은 고딕';
+            }
+            QPushButton:hover {
+                background: #e0a800;
+            }
+        """)
+        self.pause_work_btn.clicked.connect(self.toggle_work_pause)
+        self.pause_work_btn.setEnabled(False)
+        
+        self.stop_work_btn = QPushButton("⏹️ 중지")
+        self.stop_work_btn.setMinimumHeight(35)
+        self.stop_work_btn.setStyleSheet("""
+            QPushButton {
+                background: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: bold;
+                font-family: '맑은 고딕';
+            }
+            QPushButton:hover {
+                background: #c82333;
+            }
+        """)
+        self.stop_work_btn.clicked.connect(self.stop_all_work)
+        self.stop_work_btn.setEnabled(False)
+        
+        control_layout.addWidget(self.pause_work_btn)
+        control_layout.addWidget(self.stop_work_btn)
+        control_layout.addStretch()
+        
+        monitoring_layout.addLayout(control_layout)
+        
         self.log_output = QTextEdit()
         self.log_output.setMaximumHeight(200)  # 높이를 200에서 300으로 증가
         self.log_output.setMinimumHeight(200)  # 최소 높이도 설정
@@ -3639,6 +3780,9 @@ class Main(QMainWindow):
         # 크롤링 중 UI 전체 비활성화
         self.disable_ui_during_crawling(True)
         
+        # 작업 제어 버튼 활성화
+        self.enable_work_controls()
+        
         # 테이블 초기화
         self.crawling_table.setRowCount(0)
         
@@ -3737,6 +3881,18 @@ class Main(QMainWindow):
             
             # 상품 정보 추출
             for i, link in enumerate(product_links):
+                # 작업 상태 체크
+                if self.work_stopped:
+                    self.log_message("🛑 크롤링 중지됨")
+                    break
+                
+                while self.work_paused:
+                    self.log_message("⏸️ 크롤링 일시정지 중...")
+                    time.sleep(1)
+                    if self.work_stopped:
+                        self.log_message("🛑 크롤링 중지됨")
+                        return
+                
                 if collected_items >= count:
                     break
                 
@@ -4150,6 +4306,18 @@ class Main(QMainWindow):
             
             # 상품 정보 추출
             for i, link in enumerate(product_links):
+                # 작업 상태 체크
+                if self.work_stopped:
+                    self.log_message("🛑 크롤링 중지됨")
+                    break
+                
+                while self.work_paused:
+                    self.log_message("⏸️ 크롤링 일시정지 중...")
+                    time.sleep(1)
+                    if self.work_stopped:
+                        self.log_message("🛑 크롤링 중지됨")
+                        return
+                
                 if collected_items >= count:
                     break
                 
@@ -5136,6 +5304,13 @@ class Main(QMainWindow):
             for i in range(self.tab_widget.count()):
                 if "모니터링" not in self.tab_widget.tabText(i):
                     self.tab_widget.setTabEnabled(i, enabled)
+            
+            # 모니터링 탭의 제어 버튼들은 항상 활성화 유지
+            if hasattr(self, 'pause_work_btn'):
+                self.pause_work_btn.setEnabled(not enabled)  # 작업 중일 때만 활성화
+            if hasattr(self, 'stop_work_btn'):
+                self.stop_work_btn.setEnabled(not enabled)   # 작업 중일 때만 활성화
+                
         except Exception as e:
             self.log_message(f"탭 제어 오류: {str(e)}")
 
@@ -6591,7 +6766,7 @@ class Main(QMainWindow):
                 search_name = product_name.split("商品ID")[0].strip()
             
             # 추가 정리 (줄바꿈, 특수문자 제거)
-            search_name = search_name.replace("\n", " ").strip()
+            search_name = search_name.replace("\n", " ").replace("★", "").strip()
             
             self.log_message(f"🔍 검색어: '{search_name}'")
             
@@ -7221,6 +7396,10 @@ class Main(QMainWindow):
     def upload_single_item(self, row):
         """단일 상품 바로 업로드"""
         try:
+            # 로그인 체크
+            if not self.check_login_required():
+                return
+            
             title = self.crawling_table.item(row, 0).text()
             brand = self.crawling_table.item(row, 1).text()
             
@@ -7231,24 +7410,34 @@ class Main(QMainWindow):
             if reply == QMessageBox.StandardButton.Yes:
                 self.log_message(f"📤 단일 상품 업로드 시작: {brand} - {title}")
                 
-                # 시뮬레이션: 업로드 프로세스
-                import time
-                QApplication.processEvents()
-                time.sleep(2)  # 업로드 시뮬레이션
-                
-                # 성공률 90%
-                if random.random() < 0.9:
-                    self.log_message(f"✅ 업로드 완료: {title}")
-                    QMessageBox.information(self, "업로드 완료", f"'{title}'이(가) 성공적으로 업로드되었습니다.")
+                # 크롤링된 상품 데이터 가져오기
+                if hasattr(self, 'crawled_products') and row < len(self.crawled_products):
+                    product_data = self.crawled_products[row]
                     
-                    # 상태 업데이트
-                    status_item = self.crawling_table.item(row, 6)
-                    if status_item:
-                        status_item.setText("업로드 완료")
-                        status_item.setForeground(QBrush(QColor("#28a745")))
+                    # 실제 업로드 실행
+                    result = self.upload_single_product(product_data, row)
+                    
+                    if result['success']:
+                        self.log_message(f"✅ 업로드 완료: {title}")
+                        QMessageBox.information(self, "업로드 완료", f"'{title}'이(가) 성공적으로 업로드되었습니다.")
+                        
+                        # 상태 업데이트
+                        status_item = self.crawling_table.item(row, 6)
+                        if status_item:
+                            status_item.setText("업로드 완료")
+                            status_item.setForeground(QBrush(QColor("#28a745")))
+                    else:
+                        self.log_message(f"❌ 업로드 실패: {title} - {result.get('error', '알 수 없는 오류')}")
+                        QMessageBox.warning(self, "업로드 실패", f"'{title}' 업로드에 실패했습니다.\n오류: {result.get('error', '알 수 없는 오류')}")
+                        
+                        # 상태 업데이트
+                        status_item = self.crawling_table.item(row, 6)
+                        if status_item:
+                            status_item.setText("업로드 실패")
+                            status_item.setForeground(QBrush(QColor("#dc3545")))
                 else:
-                    self.log_message(f"❌ 업로드 실패: {title}")
-                    QMessageBox.warning(self, "업로드 실패", f"'{title}' 업로드에 실패했습니다.")
+                    QMessageBox.warning(self, "오류", "상품 데이터를 찾을 수 없습니다.")
+            
             
         except Exception as e:
             self.log_message(f"단일 업로드 오류: {str(e)}")
@@ -7759,12 +7948,16 @@ class Main(QMainWindow):
             color_list = flatten_and_stringify(colors)
             size_list = flatten_and_stringify(sizes)
             
+            # 카테고리 정보 처리
+            categories = product_data.get('categories', [])
+            category_text = ' > '.join(categories) if categories else '정보 없음'
+            
             # 상세 정보 텍스트 구성
             detail_text = f"""
 📦 상품명: {product_data.get('title', '정보 없음')}
 🏷️ 브랜드: {product_data.get('brand', '정보 없음')}
 💰 가격: {product_data.get('price', '정보 없음')}
-📂 카테고리: {product_data.get('category', '정보 없음')}
+📂 카테고리: {category_text}
 
 🎨 색상 옵션: {', '.join(color_list) if color_list else '없음'}
 📏 사이즈 옵션: {', '.join(size_list) if size_list else '없음'}
@@ -8987,6 +9180,7 @@ class Main(QMainWindow):
     
     def run_bulk_upload(self):
         """대량 업로드 실행 (별도 스레드)"""
+        import time
         total_products = 0  # 변수 초기화
         uploaded_count = 0
         failed_count = 0
@@ -9015,7 +9209,19 @@ class Main(QMainWindow):
             # 각 상품별로 업로드 처리
             for row in range(total_products):
                 try:
-                    # 중단 요청 확인
+                    # 작업 상태 체크
+                    if self.work_stopped:
+                        self.log_message("🛑 업로드 중지됨")
+                        break
+                    
+                    while self.work_paused:
+                        self.log_message("⏸️ 업로드 일시정지 중...")
+                        time.sleep(1)
+                        if self.work_stopped:
+                            self.log_message("🛑 업로드 중지됨")
+                            return
+                    
+                    # 중단 요청 확인 (기존 코드 유지)
                     if hasattr(self, 'upload_stopped') and self.upload_stopped:
                         self.log_message("⏹️ 사용자에 의해 업로드가 중단되었습니다.")
                         break
@@ -9039,11 +9245,31 @@ class Main(QMainWindow):
                     
                     self.log_message(f"📤 업로드 중 ({row + 1}/{total_products}): {product_data['title'][:50]}...")
                     
-                    # 실제 BUYMA 업로드 실행
-                    result = self.upload_single_product(product_data, row + 1, max_images_setting)
+                    # 실제 BUYMA 업로드 실행 (재시도 로직 포함)
+                    max_retries = 2
+                    result = None
+                    
+                    for attempt in range(max_retries):
+                        try:
+                            self.log_message(f"📤 업로드 시도 {attempt + 1}/{max_retries}: {product_data['title'][:30]}...")
+                            result = self.upload_single_product(product_data, row + 1, max_images_setting)
+                            
+                            if result['success']:
+                                break  # 성공하면 재시도 중단
+                            else:
+                                if attempt < max_retries - 1:  # 마지막 시도가 아니면
+                                    self.log_message(f"⚠️ 업로드 실패, 재시도 중... ({attempt + 1}/{max_retries})")
+                                    time.sleep(3)  # 재시도 전 3초 대기
+                                
+                        except Exception as e:
+                            if attempt < max_retries - 1:
+                                self.log_message(f"⚠️ 업로드 오류, 재시도 중... ({attempt + 1}/{max_retries}): {str(e)}")
+                                time.sleep(3)
+                            else:
+                                result = {'success': False, 'error': f"재시도 실패: {str(e)}"}
                     
                     # 결과에 따른 처리
-                    if result['success']:
+                    if result and result['success']:
                         uploaded_count += 1
                         self.increment_uploaded_count()  # 업로드 통계 업데이트
                         self.log_message(f"✅ 업로드 성공: {product_data['title'][:30]}...")
@@ -9051,12 +9277,14 @@ class Main(QMainWindow):
                         status_color = "#28a745"
                     else:
                         failed_count += 1
-                        self.log_message(f"❌ 업로드 실패: {product_data['title'][:30]}... - {result['error']}")
-                        status = f"❌ 실패: {result['error']}"
+                        error_msg = result['error'] if result else "알 수 없는 오류"
+                        self.log_message(f"❌ 업로드 최종 실패: {product_data['title'][:30]}... - {error_msg}")
+                        status = f"❌ 실패: {error_msg}"
                         status_color = "#dc3545"
                     
                     # 업로드 결과 테이블에 추가
-                    self.add_upload_result_to_table(product_data, status, status_color)
+                    error_msg = result.get('error', '') if result and not result['success'] else ''
+                    self.add_upload_result_to_table(product_data, status, status_color, error_msg)
                     
                     # 업로드 간 딜레이 (서버 부하 방지)
                     import time
@@ -9070,7 +9298,7 @@ class Main(QMainWindow):
                     try:
                         product_data = self.get_product_data_from_table(row)
                         if product_data:
-                            self.add_upload_result_to_table(product_data, f"❌ 오류: {str(e)}", "#dc3545")
+                            self.add_upload_result_to_table(product_data, f"❌ 오류", "#dc3545", str(e))
                     except:
                         pass
                     
@@ -9095,45 +9323,18 @@ class Main(QMainWindow):
                 self.stop_upload_btn.setEnabled(False)
                 self.current_upload_status.setText("대기 중")
                 
+                # 업로드 진행률 위젯 숨기기
+                if hasattr(self, 'upload_progress_widget'):
+                    self.upload_progress_widget.hide()
+                
                 # 다른 탭 활성화
                 self.set_tabs_enabled(True)
                 
             except Exception as e:
                 self.log_message(f"❌ UI 상태 복원 오류: {str(e)}")
-            failed_count = 0
+                failed_count = 0
             
-            for row in range(total_products):
-                try:
-                    # 상품 정보 가져오기
-                    product_data = self.get_crawled_product_data(row)
-                    
-                    self.log_message(f"📤 업로드 중 ({row+1}/{total_products}): {product_data['title']}")
-                    
-                    # BUYMA에 상품 업로드
-                    upload_success = self.upload_single_product(self.shared_driver, product_data)
-                    
-                    if upload_success:
-                        success_count += 1
-                        self.add_upload_result(product_data, "업로드 완료", True)
-                        self.log_message(f"✅ 업로드 완료: {product_data['title']}")
-                    else:
-                        failed_count += 1
-                        self.add_upload_result(product_data, "업로드 실패", False)
-                        self.log_message(f"❌ 업로드 실패: {product_data['title']}")
-                    
-                    # 진행률 업데이트
-                    progress = int(((row + 1) / total_products) * 100)
-                    self.upload_progress.setValue(progress)
-                    self.current_upload_status.setText(f"진행중: {row+1}/{total_products}")
-                    
-                    # 딜레이 추가 (서버 부하 방지)
-                    import time
-                    time.sleep(self.delay_time.value())
-                    
-                except Exception as e:
-                    failed_count += 1
-                    self.log_message(f"❌ 상품 업로드 오류 ({row+1}): {str(e)}")
-                    continue
+            success_count = uploaded_count
             
             # 완료 처리
             self.log_message(f"🎉 업로드 완료! 성공: {success_count}개, 실패: {failed_count}개")
@@ -11524,7 +11725,7 @@ class Main(QMainWindow):
                 search_name = product_name.split("商品ID")[0].strip()
             
             # 추가 정리 (줄바꿈, 특수문자 제거)
-            search_name = search_name.replace("\n", " ").strip()
+            search_name = search_name.replace("\n", " ").replace("★", "").strip()
             
             self.log_message(f"🔍 주력상품 검색어: '{search_name}'")
             
@@ -11925,18 +12126,20 @@ class Main(QMainWindow):
                 EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="file"][accept="image/jpeg,image/gif,image/png"][multiple]'))
             )
             
-            upload_count = min(len(images), max_images)
-            self.log_message(f"🖼️ 이미지 업로드 시작: {upload_count}개 (최대 {max_images}개)")
+            # 첫 번째 이미지 제외하고 두 번째부터 업로드
+            available_images = images[1:] if len(images) > 1 else []
+            upload_count = min(len(available_images), max_images)
+            self.log_message(f"🖼️ 이미지 업로드 시작: {upload_count}개 (첫 번째 제외, 최대 {max_images}개)")
             
             # 임시 디렉토리 생성
             temp_dir = tempfile.mkdtemp()
             uploaded_files = []
             
             try:
-                # 이미지 다운로드 및 로컬 저장
-                for i, image_url in enumerate(images[:max_images]):
+                # 이미지 다운로드 및 로컬 저장 (두 번째부터)
+                for i, image_url in enumerate(available_images[:max_images]):
                     try:
-                        self.log_message(f"📷 이미지 {i + 1}/{upload_count} 다운로드 중...")
+                        self.log_message(f"📷 이미지 {i + 2}/{len(images)} 다운로드 중...")  # 실제 순서 표시
                         
                         # 이미지 다운로드
                         response = requests.get(image_url, timeout=30)
@@ -12807,7 +13010,7 @@ class Main(QMainWindow):
             )
             return reply == QMessageBox.StandardButton.Yes
     
-    def add_upload_result_to_table(self, product_data, status, status_color):
+    def add_upload_result_to_table(self, product_data, status, status_color, error_msg=''):
         """업로드 결과를 테이블에 추가"""
         try:
             row = self.upload_table.rowCount()
@@ -12815,13 +13018,22 @@ class Main(QMainWindow):
             
             # 각 컬럼에 데이터 추가
             self.upload_table.setItem(row, 0, QTableWidgetItem(product_data.get('title', '')))
-            self.upload_table.setItem(row, 1, QTableWidgetItem(product_data.get('brand', '')))
-            self.upload_table.setItem(row, 2, QTableWidgetItem(product_data.get('price', '')))
+            self.upload_table.setItem(row, 1, QTableWidgetItem(product_data.get('price', '')))
             
             # 상태 컬럼 (색상 적용)
             status_item = QTableWidgetItem(status)
             status_item.setForeground(QBrush(QColor(status_color)))
-            self.upload_table.setItem(row, 3, status_item)
+            self.upload_table.setItem(row, 2, status_item)
+            
+            # 업로드 시간
+            self.upload_table.setItem(row, 3, QTableWidgetItem(datetime.now().strftime('%H:%M:%S')))
+            
+            # BUYMA URL (성공시에만)
+            buyma_url = "업로드 완료" if "성공" in status else ""
+            self.upload_table.setItem(row, 4, QTableWidgetItem(buyma_url))
+            
+            # 오류 메시지
+            self.upload_table.setItem(row, 5, QTableWidgetItem(error_msg))
             
         except Exception as e:
             self.log_message(f"❌ 결과 테이블 추가 오류: {str(e)}")
