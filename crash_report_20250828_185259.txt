@@ -1,0 +1,12 @@
+크래시 리포트 - 2025-08-28 18:52:59.178563
+============================================================
+예외 타입: AttributeError
+예외 메시지: 'Main' object has no attribute 'dashboard_url'
+============================================================
+상세 스택 트레이스:
+Traceback (most recent call last):
+  File "C:\Users\user\Documents\카카오톡 받은 파일\buyma\buyma_git\Buyma-Crawling-Update\buyma.py", line 9778, in save_settings
+    'dashboard_url': self.dashboard_url.text(),
+                     ^^^^^^^^^^^^^^^^^^
+AttributeError: 'Main' object has no attribute 'dashboard_url'
+============================================================

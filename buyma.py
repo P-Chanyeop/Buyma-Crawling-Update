@@ -7415,7 +7415,7 @@ class Main(QMainWindow):
                     product_data = self.crawled_products[row]
                     
                     # 실제 업로드 실행
-                    result = self.upload_single_product(product_data, row)
+                    result = self.upload_single_product(product_data, row + 1, self.max_images.value())
                     
                     if result['success']:
                         self.log_message(f"✅ 업로드 완료: {title}")
@@ -9774,13 +9774,7 @@ class Main(QMainWindow):
             'min_margin': self.min_margin.value(),  # 다시 추가됨
             'exclude_loss_products': self.exclude_loss_products.isChecked(),
             'auto_mode': self.auto_mode.isChecked(),
-            # 대시보드 설정
-            'dashboard_url': self.dashboard_url.text(),
-            'dashboard_count': self.dashboard_count.value(),
-            'dashboard_discount': self.dashboard_discount.value(),
-            # 'category': self.category_combo.currentText(),  # 주석처리됨
-            # 'shipping': self.shipping_combo.currentText(),  # 주석처리됨
-            # 'upload_mode': self.upload_mode.currentText(),  # 주석처리됨
+            # 업로드 설정
             'max_images': self.max_images.value(),
             'include_images': self.include_images.isChecked(),
             'include_options': self.include_options.isChecked(),
@@ -9827,13 +9821,7 @@ class Main(QMainWindow):
                 self.auto_mode.setChecked(settings.get('auto_mode', True))
                 if not settings.get('auto_mode', True):
                     self.manual_mode.setChecked(True)
-                # 대시보드 설정
-                self.dashboard_url.setText(settings.get('dashboard_url', ''))
-                self.dashboard_count.setValue(settings.get('dashboard_count', 20))
-                self.dashboard_discount.setValue(settings.get('dashboard_discount', 100))
-                # self.category_combo.setCurrentText(settings.get('category', '레디스 패션'))  # 주석처리됨
-                # self.shipping_combo.setCurrentText(settings.get('shipping', '국제배송'))  # 주석처리됨
-                # self.upload_mode.setCurrentText(settings.get('upload_mode', '즉시 등록'))  # 주석처리됨
+                # 업로드 설정
                 self.max_images.setValue(settings.get('max_images', 10))
                 self.include_images.setChecked(settings.get('include_images', True))
                 self.include_options.setChecked(settings.get('include_options', True))
@@ -11121,6 +11109,18 @@ class Main(QMainWindow):
             
             for i, product in enumerate(self.favorite_products):
                 try:
+                    # 작업 상태 체크
+                    if self.work_stopped:
+                        self.log_message("🛑 주력상품 가격확인 중지됨")
+                        break
+                    
+                    while self.work_paused:
+                        self.log_message("⏸️ 주력상품 가격확인 일시정지 중...")
+                        time.sleep(1)
+                        if self.work_stopped:
+                            self.log_message("🛑 주력상품 가격확인 중지됨")
+                            return
+                    
                     product_name = product.get('name', '')
                     current_price = product.get('current_price', 0)
                     
@@ -11240,6 +11240,18 @@ class Main(QMainWindow):
             
             for i, product in enumerate(need_update):
                 try:
+                    # 작업 상태 체크
+                    if self.work_stopped:
+                        self.log_message("🛑 주력상품 가격수정 중지됨")
+                        break
+                    
+                    while self.work_paused:
+                        self.log_message("⏸️ 주력상품 가격수정 일시정지 중...")
+                        time.sleep(1)
+                        if self.work_stopped:
+                            self.log_message("🛑 주력상품 가격수정 중지됨")
+                            return
+                    
                     product_name = product.get('name', '')
                     suggested_price = product.get('suggested_price', 0)
                     
@@ -11907,6 +11919,16 @@ class Main(QMainWindow):
     def upload_single_product(self, product_data, product_number, max_images):
         """단일 상품 BUYMA 업로드 - 실제 구현"""
         try:
+            # 작업 상태 체크
+            if self.work_stopped:
+                return {'success': False, 'error': '사용자에 의해 중지됨'}
+            
+            while self.work_paused:
+                self.log_message("⏸️ 업로드 일시정지 중...")
+                time.sleep(1)
+                if self.work_stopped:
+                    return {'success': False, 'error': '사용자에 의해 중지됨'}
+            
             # shared_driver 상태 확인
             if not self.shared_driver:
                 self.log_message("❌ 브라우저가 초기화되지 않았습니다. 브라우저를 재시작합니다...")
@@ -11936,12 +11958,17 @@ class Main(QMainWindow):
                 return {'success': False, 'error': f'페이지 로딩 실패: {str(e)}'}
             
             # 1. 상품명 입력
+            if self.work_stopped:
+                return {'success': False, 'error': '사용자에 의해 중지됨'}
+            
             self.log_message(f"📝 상품명 입력: {product_data['title'][:50]}...")
             result = self.fill_product_title_real(product_data['title'])
             if not result:
                 return {'success': False, 'error': '상품명 입력 실패'}
             
             # 2. 상품 설명 입력
+            if self.work_stopped:
+                return {'success': False, 'error': '사용자에 의해 중지됨'}
             self.log_message(f"📄 상품 설명 입력...")
             result = self.fill_product_description_real(product_data)
             if not result:
@@ -11955,12 +11982,17 @@ class Main(QMainWindow):
                     return {'success': False, 'error': '이미지 업로드 실패'}
             
             # 4. 카테고리 선택
+            if self.work_stopped:
+                return {'success': False, 'error': '사용자에 의해 중지됨'}
+            
             self.log_message(f"📂 카테고리 선택...")
             result = self.select_product_category_real(product_data)
             if not result:
                 return {'success': False, 'error': '카테고리 선택 실패'}
             
             # 5. 색상 추가 (크롤링된 색상 데이터가 있는 경우)
+            if self.work_stopped:
+                return {'success': False, 'error': '사용자에 의해 중지됨'}
             if 'colors' in product_data and product_data['colors']:
                 self.log_message(f"🎨 색상 추가: {len(product_data['colors'])}개")
                 result = self.add_product_colors_real(product_data)
@@ -11970,6 +12002,9 @@ class Main(QMainWindow):
                 self.log_message(f"📝 크롤링된 색상 데이터가 없습니다.")
             
             # 6. 사이즈 추가 (크롤링된 사이즈 데이터가 있는 경우)
+            if self.work_stopped:
+                return {'success': False, 'error': '사용자에 의해 중지됨'}
+            
             if 'sizes' in product_data and product_data['sizes']:
                 self.log_message(f"📏 사이즈 추가: {len(product_data['sizes'])}개")
                 result = self.add_product_sizes_real(product_data)
@@ -12240,7 +12275,7 @@ class Main(QMainWindow):
                         return False
                     
                     self.log_message(f"✅ {level + 1}차 카테고리 박스 클릭 완료")
-                    time.sleep(4)  # 메뉴 열림 대기
+                    time.sleep(2)  # 메뉴 열림 대기
                     
                     # 메뉴가 실제로 열렸는지 확인
                     menu_check_script = """
@@ -12346,6 +12381,8 @@ class Main(QMainWindow):
                     else:
                         self.log_message(f"❌ {level + 1}차 카테고리 옵션 선택 실패: {category_name}")
                         # 실패해도 계속 진행 (다음 레벨이 있을 수 있음)
+                        
+                    time.sleep(2)
                 
                 except Exception as e:
                     self.log_message(f"❌ {level + 1}차 카테고리 선택 오류: {str(e)}")
@@ -12711,6 +12748,8 @@ class Main(QMainWindow):
                         self.log_message(f"❌ 사이즈 입력 필드를 찾을 수 없습니다 (인덱스: {size_input_index})")
                         continue
                     
+                    time.sleep(1)
+                    
                     # 다음 사이즈를 위한 추가 버튼 클릭 (마지막 사이즈가 아닌 경우)
                     if i < len(sizes) - 1:
                         self.log_message(f"➕ 다음 사이즈를 위한 추가 버튼 클릭")
@@ -12719,8 +12758,14 @@ class Main(QMainWindow):
                         add_size_btns = self.shared_driver.find_elements(By.CSS_SELECTOR, "div.bmm-c-form-table__foot")
                         if add_size_btns and len(add_size_btns) > 0:
                             add_btn = add_size_btns[0].find_element(By.TAG_NAME, "a")
-                            add_btn.click()
-                            time.sleep(2)  # 새 사이즈 필드 로딩 대기
+                            
+                            # 버튼이 보이도록 스크롤
+                            self.shared_driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", add_btn)
+                            time.sleep(1)
+                            
+                            # JavaScript로 클릭 (element click intercepted 방지)
+                            self.shared_driver.execute_script("arguments[0].click();", add_btn)
+                            time.sleep(3)  # 새 사이즈 필드 로딩 대기 (2초 → 3초)
                         else:
                             self.log_message("❌ 사이즈 추가 버튼을 찾을 수 없습니다.")
                     
@@ -13415,6 +13460,18 @@ class Main(QMainWindow):
             # 각 상품별 가격분석 실행
             for row in range(total_rows):
                 try:
+                    # 작업 상태 체크
+                    if self.work_stopped:
+                        self.my_products_log_signal.emit("🛑 가격분석 중지됨")
+                        break
+                    
+                    while self.work_paused:
+                        self.my_products_log_signal.emit("⏸️ 가격분석 일시정지 중...")
+                        time.sleep(1)
+                        if self.work_stopped:
+                            self.my_products_log_signal.emit("🛑 가격분석 중지됨")
+                            return
+                    
                     # 테이블에서 상품 정보 가져오기
                     product_name_item = self.price_table.item(row, 0)
                     current_price_item = self.price_table.item(row, 1)
@@ -13578,6 +13635,18 @@ class Main(QMainWindow):
         
         for i, row in enumerate(need_update):
             try:
+                # 작업 상태 체크
+                if self.work_stopped:
+                    self.log_message("🛑 가격수정 중지됨")
+                    break
+                
+                while self.work_paused:
+                    self.log_message("⏸️ 가격수정 일시정지 중...")
+                    time.sleep(1)
+                    if self.work_stopped:
+                        self.log_message("🛑 가격수정 중지됨")
+                        return
+                
                 product_name = self.price_table.item(row, 0).text()
                 self.log_message(f"💰 가격 수정 중 ({i+1}/{len(need_update)}): {product_name[:30]}...")
                 
