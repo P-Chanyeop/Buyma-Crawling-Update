@@ -604,6 +604,7 @@ class Main(QMainWindow):
     crawling_result_signal = pyqtSignal(dict)  # 크롤링 결과
     crawling_finished_signal = pyqtSignal()    # 완료
     crawling_log_signal = pyqtSignal(str)      # 크롤링 로그
+    crawling_table_update_signal = pyqtSignal(dict)  # 테이블 업데이트 전용
     upload_log_signal = pyqtSignal(str)        # 업로드 로그
     price_analysis_log_signal = pyqtSignal(str)  # 가격분석 로그
     my_products_log_signal = pyqtSignal(str)     # 내상품 불러오기 로그
@@ -690,6 +691,7 @@ class Main(QMainWindow):
         self.crawling_progress_signal.connect(self.update_crawling_progress)
         self.crawling_status_signal.connect(self.update_crawling_status)
         self.crawling_result_signal.connect(self.add_crawling_result_safe)
+        self.crawling_table_update_signal.connect(self.update_crawling_table_safe)  # 새 시그널 연결
         self.crawling_finished_signal.connect(self.crawling_finished_safe)
         self.crawling_log_signal.connect(self.log_message)  # 크롤링 로그 시그널 연결
         self.upload_log_signal.connect(self.log_message)    # 업로드 로그 시그널 연결
@@ -3886,8 +3888,10 @@ class Main(QMainWindow):
                         
                         collected_items += 1
                         
-                        # UI 업데이트 (시그널로 안전하게 처리)
+                        # UI 업데이트 (시그널로 안전하게 처리) - 데이터 저장용
                         self.crawling_result_signal.emit(item_data)
+                        # 테이블 업데이트용 별도 시그널
+                        self.crawling_table_update_signal.emit(item_data)
                         
                         # 진행률 업데이트
                         progress = int((collected_items / count) * 100)
@@ -4299,8 +4303,10 @@ class Main(QMainWindow):
                         
                         collected_items += 1
                         
-                        # UI 업데이트 (시그널로 안전하게 처리)
+                        # UI 업데이트 (시그널로 안전하게 처리) - 데이터 저장용
                         self.crawling_result_signal.emit(item_data)
+                        # 테이블 업데이트용 별도 시그널
+                        self.crawling_table_update_signal.emit(item_data)
                         
                         # 진행률 업데이트 (시그널로 안전하게 처리)
                         progress = int((collected_items / count) * 100)
@@ -5693,9 +5699,8 @@ class Main(QMainWindow):
             
             current_page_products = self.all_products[start_idx:end_idx]
             
-            # UI 업데이트를 위한 이벤트 처리
-            from PyQt6.QtWidgets import QApplication
-            QApplication.processEvents()
+            # UI 업데이트는 시그널로 처리 (워커 스레드에서 직접 UI 조작 금지)
+            # QApplication.processEvents() 제거 - 크래시 원인
             
             # 테이블에 현재 페이지 상품들만 표시 (배치 처리)
             self.display_products_in_table_optimized(current_page_products)
@@ -5866,9 +5871,8 @@ class Main(QMainWindow):
             # 대용량 데이터 처리를 위한 지연 로딩
             if len(products) > 1000:
                 self.log_message("⚠️ 대용량 데이터 감지: 안전한 처리를 위해 지연 로딩 적용")
-                # UI 업데이트를 위한 이벤트 처리
-                from PyQt6.QtWidgets import QApplication
-                QApplication.processEvents()
+                # UI 업데이트는 시그널로 처리 (워커 스레드에서 직접 UI 조작 금지)
+                # QApplication.processEvents() 제거 - 크래시 원인
             
             # 첫 번째 페이지 표시 (비동기 처리)
             QTimer.singleShot(100, self.display_current_page)
@@ -10493,117 +10497,66 @@ class Main(QMainWindow):
             print(f"상태 업데이트 오류: {e}")
     
     def add_crawling_result_safe(self, item_data):
-        """크롤링 결과 추가 (메인 스레드에서 안전하게)"""
+        """크롤링 결과 데이터 저장 (UI 조작 없음)"""
         try:
-            # 크롤링된 상품 데이터를 클래스 변수에 저장
+            # 크롤링된 상품 데이터를 클래스 변수에 저장만
             if not hasattr(self, 'crawled_products'):
                 self.crawled_products = []
             self.crawled_products.append(item_data)
             
-            # 크롤링 통계 업데이트 (안전장치 추가)
+            # 통계 업데이트만 (UI 조작 최소화)
             try:
                 self.increment_crawled_count()
-            except:
-                pass
-            
-            # 성공/실패 통계 업데이트 (안전장치 추가)
-            try:
                 if item_data.get('status') == '수집 완료':
                     self.increment_success_count()
                 else:
                     self.increment_failed_count()
             except:
                 pass
+                
+        except Exception as e:
+            self.log_message(f"❌ 크롤링 데이터 저장 오류: {str(e)}")
+    
+    def update_crawling_table_safe(self, item_data):
+        """크롤링 테이블 업데이트 (메인 스레드에서 안전하게)"""
+        try:
+            row = self.crawling_table.rowCount()
+            self.crawling_table.insertRow(row)
             
-            # 테이블 업데이트 (안전장치 추가)
+            # 기본 데이터만 간단하게 설정
+            basic_items = [
+                str(item_data.get('title', 'Unknown'))[:50],
+                str(item_data.get('brand', 'Unknown')),
+                str(item_data.get('price', 'N/A')),
+                f"{len(item_data.get('images', []))}장",
+                f"색상:{len(item_data.get('colors', []))}개",
+                str(item_data.get('url', 'N/A'))[:30] + "...",
+                str(item_data.get('status', '완료'))
+            ]
+            
+            # 텍스트만 설정 (복잡한 폰트/색상 설정 제거)
+            for col, text in enumerate(basic_items):
+                if col < self.crawling_table.columnCount():
+                    item = QTableWidgetItem(text)
+                    self.crawling_table.setItem(row, col, item)
+            
+            # 액션 버튼 추가 (간단하게)
             try:
-                row = self.crawling_table.rowCount()
-                self.crawling_table.insertRow(row)
-                
-                # 이미지 수 계산
-                images = item_data.get('images', [])
-                image_count = len(images) if images else 0
-                
-                # 색상/사이즈 정보 포맷팅
-                colors = item_data.get('colors', [])
-                sizes = item_data.get('sizes', [])
-                
-                if colors or sizes:
-                    colors_sizes_text = f"색상:{len(colors)}개, 사이즈:{len(sizes)}개"
-                else:
-                    colors_sizes_text = "정보 없음"
-                
-                # 데이터 설정 (올바른 키 사용)
-                items = [
-                    item_data.get('title', 'Unknown'),
-                    item_data.get('brand', 'Unknown'),
-                    item_data.get('price', 'N/A'),
-                    f"{image_count}장",  # 이미지 수 올바르게 계산
-                    colors_sizes_text,   # 색상/사이즈 올바르게 포맷팅
-                    item_data.get('url', 'N/A'),
-                    item_data.get('status', '완료')
-                ]
-                
-                for col, item_text in enumerate(items):
-                    try:
-                        item = QTableWidgetItem(str(item_text))
-                        # 맑은 고딕 폰트 적용
-                        font = item.font()
-                        font.setFamily("맑은 고딕")
-                        item.setFont(font)
-                        self.crawling_table.setItem(row, col, item)
-                    except Exception as col_error:
-                        # 개별 컬럼 오류는 무시하고 계속 진행
-                        continue
-                
-                # 상태 컬럼 색상 설정 (안전장치 추가)
-                try:
-                    status_item = self.crawling_table.item(row, 6)
-                    if status_item:
-                        if "완료" in status_item.text():
-                            status_item.setForeground(QBrush(QColor("#28a745")))
-                        elif "실패" in status_item.text():
-                            status_item.setForeground(QBrush(QColor("#dc3545")))
-                        
-                        font = status_item.font()
-                        font.setBold(True)
-                        font.setFamily("맑은 고딕")
-                        status_item.setFont(font)
-                except:
-                    pass
-                
-                # 액션 버튼들 추가 (안전장치 추가)
-                try:
-                    self.add_action_buttons_to_crawling_table(row)
-                except Exception as btn_error:
-                    # 버튼 추가 실패해도 계속 진행
-                    pass
-                
-                # 크롤링 중이면 새로 추가된 액션 버튼도 비활성화
-                try:
-                    if not self.start_crawling_btn.isEnabled():  # 크롤링 중인지 확인
-                        action_widget = self.crawling_table.cellWidget(row, 7)
-                        if action_widget:
-                            action_widget.setEnabled(False)
-                except:
-                    pass
-                
-                # 행 높이를 버튼 높이에 맞춤
-                try:
-                    self.crawling_table.setRowHeight(row, 35)
-                except:
-                    pass
-                
-                # 자동 스크롤 (안전장치 추가)
-                try:
-                    self.crawling_table.scrollToBottom()
-                except:
-                    pass
-                    
-            except Exception as table_error:
-                # 테이블 업데이트 실패해도 로그는 남김
-                print(f"테이블 업데이트 오류: {table_error}")
+                self.add_action_buttons_to_crawling_table(row)
+            except:
+                pass
             
+            # 자동 스크롤
+            try:
+                self.crawling_table.scrollToBottom()
+            except:
+                pass
+                
+        except Exception as e:
+            # 테이블 업데이트 실패해도 프로그램 크래시 방지
+            self.log_message(f"⚠️ 테이블 업데이트 실패: {str(e)}")
+            pass
+
             # 디버깅 로그 추가 (안전장치 추가)
             try:
                 self.log_message(f"📊 테이블 추가: {item_data.get('title', 'Unknown')[:20]}... "
@@ -11908,6 +11861,14 @@ class Main(QMainWindow):
             if not result:
                 return {'success': False, 'error': '카테고리 선택 실패'}
             
+            # 브랜드명 입력
+            if 'brand' in product_data and product_data['brand']:
+                self.log_message(f"🏷️ 브랜드명 입력: {product_data['brand']}")
+                
+                result = self.fill_brand_name_real(product_data['brand'])
+                if not result:
+                    self.log_message(f"⚠️ 브랜드명 입력 실패 (계속 진행)")
+            
             # 5. 색상 추가 (크롤링된 색상 데이터가 있는 경우)
             if 'colors' in product_data and product_data['colors']:
                 self.log_message(f"🎨 색상 추가: {len(product_data['colors'])}개")
@@ -11926,6 +11887,13 @@ class Main(QMainWindow):
                     self.log_message(f"⚠️ 사이즈 추가 실패 (계속 진행)")
             else:
                 self.log_message(f"📝 크롤링된 사이즈 데이터가 없습니다.")
+            
+            # 구매할 수 있는 총 수량 입력
+            self.log_message(f"🔢 총 수량 입력...")
+            result = self.set_total_quantity_real(product_data)
+            if not result:
+                return {'success': False, 'error': '총 수량 입력 실패'}
+            
             
             # 7. 배송방법, 구입기간, 가격 설정
             self.log_message(f"🚚 배송 및 상세 설정...")
@@ -11967,7 +11935,15 @@ class Main(QMainWindow):
                 # 최종 확인 후 등록 버튼 클릭
                 confirm_button.click()
                 self.log_message("🚀 상품 등록 버튼 클릭 완료!")
-                time.sleep(3)  # 등록 처리 대기
+                time.sleep(2)  # 등록 처리 대기
+                
+                # 최종 등록 버튼 클릭
+                final_button = WebDriverWait(self.shared_driver, 10).until(
+                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, "button.bmm-c-btn.bmm-c-btn--p.bmm-c-btn--l"))
+                )
+                final_button[1].click()
+                self.log_message("🚀 최종 등록 버튼 클릭 완료!")
+                time.sleep(2)
                 
                 # 등록 완료 확인 (선택사항)
                 self.log_message("✅ 상품 등록이 완료되었습니다!")
@@ -11987,6 +11963,59 @@ class Main(QMainWindow):
             self.log_message(f"❌ 업로드 중 예외 발생: {str(e)}")
             return {'success': False, 'error': str(e)}
     
+    def set_total_quantity_real(self, product_data):
+        """총 수량 입력 - 실제 BUYMA 구조"""
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            # 총 수량 입력 필드 찾기
+            quantity_inputs = WebDriverWait(self.shared_driver, 10).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, "input.bmm-c-text-field.bmm-c-text-field--half-size-char"))
+            )
+            
+            if len(quantity_inputs) == 0:
+                self.log_message("❌ 총 수량 입력 필드를 찾을 수 없습니다.")   
+                return False
+            
+            quantity_input = quantity_inputs[0]  # 첫 번째 input 요소
+            quantity_input.clear()
+            quantity_input.send_keys("1")  # 기본값 10
+            self.log_message("✅ 총 수량 입력 완료: 1")
+            return True
+        
+        except Exception as e:
+            self.log_message(f"❌ 총 수량 입력 오류: {str(e)}")
+            return False
+    
+    def fill_brand_name_real(self, brand_name):
+        """브랜드명 입력 - 실제 BUYMA 구조"""
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            
+            # 브랜드명 입력 필드 찾기 
+            brand_inputs = WebDriverWait(self.shared_driver, 10).until(
+                EC.presence_of_all_elements_located((By.XPATH, "//input[@placeholder='ブランド名を入力すると候補が表示されます']"))
+            )
+            
+            if len(brand_inputs) == 0:
+                self.log_message("❌ 브랜드명 입력 필드를 찾을 수 없습니다.")
+                return False
+            
+            brand_input = brand_inputs[0]
+            brand_input.clear()
+            brand_input.send_keys(brand_name)
+            
+            self.log_message(f"✅ 브랜드명 입력 완료: {brand_name}")
+            return True
+        
+        except Exception as e:
+            self.log_message(f"❌ 브랜드명 입력 오류: {str(e)}")
+            return False
+            
     def fill_product_title_real(self, title):
         """상품명 입력 - 실제 BUYMA 구조"""
         try:
