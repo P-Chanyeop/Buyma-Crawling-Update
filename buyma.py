@@ -603,6 +603,11 @@ class Main(QMainWindow):
     crawling_status_signal = pyqtSignal(str)   # 상태 텍스트
     crawling_result_signal = pyqtSignal(dict)  # 크롤링 결과
     crawling_finished_signal = pyqtSignal()    # 완료
+    crawling_log_signal = pyqtSignal(str)      # 크롤링 로그
+    upload_log_signal = pyqtSignal(str)        # 업로드 로그
+    price_analysis_log_signal = pyqtSignal(str)  # 가격분석 로그
+    my_products_log_signal = pyqtSignal(str)     # 내상품 불러오기 로그
+    my_products_display_signal = pyqtSignal(list)  # 내상품 테이블 업데이트
     
     # 로그인 관련 시그널
     login_success_signal = pyqtSignal()        # 로그인 성공
@@ -686,6 +691,11 @@ class Main(QMainWindow):
         self.crawling_status_signal.connect(self.update_crawling_status)
         self.crawling_result_signal.connect(self.add_crawling_result_safe)
         self.crawling_finished_signal.connect(self.crawling_finished_safe)
+        self.crawling_log_signal.connect(self.log_message)  # 크롤링 로그 시그널 연결
+        self.upload_log_signal.connect(self.log_message)    # 업로드 로그 시그널 연결
+        self.price_analysis_log_signal.connect(self.log_message)  # 가격분석 로그 시그널 연결
+        self.my_products_log_signal.connect(self.log_message)     # 내상품 로그 시그널 연결
+        self.my_products_display_signal.connect(self.display_my_products)  # 내상품 테이블 업데이트
         
         # 로그인 시그널 연결
         self.login_success_signal.connect(self.on_login_success)
@@ -3877,20 +3887,20 @@ class Main(QMainWindow):
                 except:
                     continue
             
-            self.log_message(f"🔗 상품 링크 {len(product_links)}개 추출 완료")
+            self.crawling_log_signal.emit(f"🔗 상품 링크 {len(product_links)}개 추출 완료")
             
             # 상품 정보 추출
             for i, link in enumerate(product_links):
                 # 작업 상태 체크
                 if self.work_stopped:
-                    self.log_message("🛑 크롤링 중지됨")
+                    self.crawling_log_signal.emit("🛑 크롤링 중지됨")
                     break
                 
                 while self.work_paused:
-                    self.log_message("⏸️ 크롤링 일시정지 중...")
+                    self.crawling_log_signal.emit("⏸️ 크롤링 일시정지 중...")
                     time.sleep(1)
                     if self.work_stopped:
-                        self.log_message("🛑 크롤링 중지됨")
+                        self.crawling_log_signal.emit("🛑 크롤링 중지됨")
                         return
                 
                 if collected_items >= count:
@@ -4308,14 +4318,14 @@ class Main(QMainWindow):
             for i, link in enumerate(product_links):
                 # 작업 상태 체크
                 if self.work_stopped:
-                    self.log_message("🛑 크롤링 중지됨")
+                    self.crawling_log_signal.emit("🛑 크롤링 중지됨")
                     break
                 
                 while self.work_paused:
-                    self.log_message("⏸️ 크롤링 일시정지 중...")
+                    self.crawling_log_signal.emit("⏸️ 크롤링 일시정지 중...")
                     time.sleep(1)
                     if self.work_stopped:
-                        self.log_message("🛑 크롤링 중지됨")
+                        self.crawling_log_signal.emit("🛑 크롤링 중지됨")
                         return
                 
                 if collected_items >= count:
@@ -5412,6 +5422,10 @@ class Main(QMainWindow):
             date_str = now.strftime("%Y%m%d")
             time_str = now.strftime("%H%M%S")
             json_filename = f"상품정보_{date_str}_{time_str}.json"
+            json_filepath = os.path.join(os.getcwd(), json_filename)
+            
+            # 현재 JSON 파일 경로 저장 (분석 결과 업데이트용)
+            self.current_json_file = json_filepath
             
             self.log_message(f"📁 상품 정보를 {json_filename} 파일로 저장합니다.")
             
@@ -5429,9 +5443,21 @@ class Main(QMainWindow):
             }
             
             while True:
+                # 작업 상태 체크 추가
+                if self.work_stopped:
+                    self.my_products_log_signal.emit("🛑 내상품 불러오기 중지됨")
+                    break
+                
+                while self.work_paused:
+                    self.my_products_log_signal.emit("⏸️ 내상품 불러오기 일시정지 중...")
+                    time.sleep(1)
+                    if self.work_stopped:
+                        self.my_products_log_signal.emit("🛑 내상품 불러오기 중지됨")
+                        return
+                
                 # 내 상품 페이지로 이동
                 my_products_url = f"https://www.buyma.com/my/sell?duty_kind=all&facet=brand_id%2Ccate_pivot%2Cstatus%2Ctag_ids%2Cshop_labels%2Cstock_state&order=desc&page={page_number}&rows=100&sale_kind=all&sort=item_id&status=for_sale&timesale_kind=all#/"
-                self.log_message(f"🌐 내 상품 페이지 {page_number} 접속 중...")
+                self.my_products_log_signal.emit(f"🌐 내 상품 페이지 {page_number} 접속 중...")
                 
                 self.shared_driver.get(my_products_url)
                 time.sleep(3)
@@ -5546,14 +5572,14 @@ class Main(QMainWindow):
                             # 중간 저장 (50개마다 메모리 절약)
                             if total_products % 50 == 0:
                                 try:
-                                    with open(json_filename, 'w', encoding='utf-8') as f:
+                                    with open(json_filepath, 'w', encoding='utf-8') as f:
                                         json.dump(json_data, f, ensure_ascii=False, indent=2)
-                                    self.log_message(f"💾 중간 저장 완료: {total_products}개 상품")
+                                    self.my_products_log_signal.emit(f"💾 중간 저장 완료: {total_products}개 상품")
                                 except Exception as e:
-                                    self.log_error(f"❌ 중간 저장 실패: {str(e)}")
+                                    self.my_products_log_signal.emit(f"❌ 중간 저장 실패: {str(e)}")
                             
                         except Exception as e:
-                            self.log_message(f"⚠️ 상품 {i+1} 정보 추출 실패: {str(e)}")
+                            self.my_products_log_signal.emit(f"⚠️ 상품 {i+1} 정보 추출 실패: {str(e)}")
                             continue
                     
                     # 다음 페이지로 이동 준비
@@ -5562,30 +5588,29 @@ class Main(QMainWindow):
                     # 마지막 페이지인지 확인 (페이지당 100개씩이고, 총 개수 파악 후 비교)
                     try:
                         if len(product_elements) < 100:
-                            self.log_message("📃 마지막 페이지에 도달했습니다.")
-                            
+                            self.my_products_log_signal.emit("📃 마지막 페이지에 도달했습니다.")
                             break
                     except:
                         break
                     
                 except Exception as e:
-                    self.log_message(f"❌ 상품 목록 크롤링 실패: {str(e)}")
-                    
+                    self.my_products_log_signal.emit(f"❌ 상품 목록 크롤링 실패: {str(e)}")
                     continue
                     
                     
             # 최종 JSON 저장
             try:
                 json_data["수집_정보"]["총_상품수"] = total_products
-                with open(json_filename, 'w', encoding='utf-8') as f:
+                with open(json_filepath, 'w', encoding='utf-8') as f:
                     json.dump(json_data, f, ensure_ascii=False, indent=2)
-                self.log_message(f"💾 최종 저장 완료: {json_filename}")
+                self.my_products_log_signal.emit(f"💾 최종 저장 완료: {json_filename}")
+                self.my_products_log_signal.emit(f"📁 파일 위치: {json_filepath}")
             except Exception as e:
-                self.log_error(f"❌ 최종 저장 실패: {str(e)}")
+                self.my_products_log_signal.emit(f"❌ 최종 저장 실패: {str(e)}")
                     
-            # UI 테이블에 결과 표시 (모든 상품 표시)
+            # UI 테이블에 결과 표시 (시그널 사용)
             display_products = json_data["상품_목록"]
-            self.display_my_products(display_products)
+            self.my_products_display_signal.emit(display_products)
             self.my_products_log_signal.emit(f"🎉 내 상품 {total_products}개 수집 완료! (테이블에 {len(display_products)}개 표시)")
             
             # 가격분석 시작 (내 상품 불러오기 완료 후)
@@ -5601,6 +5626,18 @@ class Main(QMainWindow):
             # 각 상품별 가격분석 실행
             for row in range(len(display_products)):
                 try:
+                    # 작업 상태 체크 추가
+                    if self.work_stopped:
+                        self.my_products_log_signal.emit("🛑 가격분석 중지됨")
+                        break
+                    
+                    while self.work_paused:
+                        self.my_products_log_signal.emit("⏸️ 가격분석 일시정지 중...")
+                        time.sleep(1)
+                        if self.work_stopped:
+                            self.my_products_log_signal.emit("🛑 가격분석 중지됨")
+                            return
+                    
                     product = display_products[row]
                     product_name = product.get('title', '')
                     current_price_text = product.get('current_price', '')
@@ -13445,6 +13482,96 @@ class Main(QMainWindow):
             self.log_message(f"❌ 액션 버튼 추가 오류 (행 {row}): {str(e)}")
             pass
             
+    def update_products_json_with_analysis(self, analysis_results):
+        """가격 분석 결과를 기존 JSON 파일에 업데이트"""
+        try:
+            if not hasattr(self, 'current_json_file') or not self.current_json_file:
+                self.log_message("⚠️ 업데이트할 JSON 파일이 없습니다. 새로 저장합니다.")
+                self.save_products_to_json_with_analysis(analysis_results)
+                return
+            
+            # 기존 JSON 파일 읽기
+            import json
+            import os
+            
+            if not os.path.exists(self.current_json_file):
+                self.log_message("⚠️ 기존 JSON 파일을 찾을 수 없습니다. 새로 저장합니다.")
+                self.save_products_to_json_with_analysis(analysis_results)
+                return
+            
+            with open(self.current_json_file, 'r', encoding='utf-8') as f:
+                existing_data = json.load(f)
+            
+            # 분석 결과를 기존 데이터에 병합
+            updated_count = 0
+            for product_name, analysis in analysis_results.items():
+                # 기존 데이터에서 해당 상품 찾기
+                for product in existing_data:
+                    if product.get('name') == product_name:
+                        # 분석 결과 추가
+                        product['analysis_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        product['lowest_price'] = analysis.get('lowest_price', 0)
+                        product['suggested_price'] = analysis.get('suggested_price', 0)
+                        product['price_difference'] = analysis.get('price_difference', 0)
+                        product['analysis_status'] = analysis.get('status', '분석 실패')
+                        product['competitor_count'] = analysis.get('competitor_count', 0)
+                        updated_count += 1
+                        break
+            
+            # 업데이트된 데이터를 파일에 저장
+            with open(self.current_json_file, 'w', encoding='utf-8') as f:
+                json.dump(existing_data, f, ensure_ascii=False, indent=2)
+            
+            self.log_message(f"📊 JSON 파일 업데이트 완료: {updated_count}개 상품 분석 결과 저장")
+            self.log_message(f"💾 파일 위치: {self.current_json_file}")
+            
+        except Exception as e:
+            self.log_message(f"❌ JSON 파일 업데이트 오류: {str(e)}")
+    
+    def save_products_to_json_with_analysis(self, analysis_results):
+        """상품 정보와 분석 결과를 새 JSON 파일로 저장"""
+        try:
+            if not hasattr(self, 'all_products') or not self.all_products:
+                self.log_message("⚠️ 저장할 상품 데이터가 없습니다.")
+                return
+            
+            # 파일명 생성
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"상품정보_분석결과_{timestamp}.json"
+            filepath = os.path.join(os.getcwd(), filename)
+            
+            # 상품 데이터와 분석 결과 병합
+            products_with_analysis = []
+            for product in self.all_products:
+                product_name = product.get('name', '')
+                product_data = product.copy()
+                
+                # 분석 결과 추가
+                if product_name in analysis_results:
+                    analysis = analysis_results[product_name]
+                    product_data['analysis_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    product_data['lowest_price'] = analysis.get('lowest_price', 0)
+                    product_data['suggested_price'] = analysis.get('suggested_price', 0)
+                    product_data['price_difference'] = analysis.get('price_difference', 0)
+                    product_data['analysis_status'] = analysis.get('status', '분석 실패')
+                    product_data['competitor_count'] = analysis.get('competitor_count', 0)
+                else:
+                    product_data['analysis_status'] = '분석 안됨'
+                
+                products_with_analysis.append(product_data)
+            
+            # JSON 파일로 저장
+            import json
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(products_with_analysis, f, ensure_ascii=False, indent=2)
+            
+            self.current_json_file = filepath
+            self.log_message(f"💾 상품 정보 및 분석 결과 저장 완료: {len(products_with_analysis)}개")
+            self.log_message(f"📁 파일 위치: {filepath}")
+            
+        except Exception as e:
+            self.log_message(f"❌ JSON 저장 오류: {str(e)}")
+
     def analyze_existing_table_data(self):
         """기존 테이블 데이터로 가격분석 실행"""
         try:
@@ -13456,6 +13583,7 @@ class Main(QMainWindow):
             self.my_products_log_signal.emit(f"🔍 기존 데이터 가격분석 시작 - 모드: {'🤖 자동' if is_auto_mode else '👤 수동'}")
             
             total_rows = self.price_table.rowCount()
+            analysis_results = {}  # 분석 결과 저장용 딕셔너리
             
             # 각 상품별 가격분석 실행
             for row in range(total_rows):
@@ -13466,10 +13594,10 @@ class Main(QMainWindow):
                         break
                     
                     while self.work_paused:
-                        self.my_products_log_signal.emit("⏸️ 가격분석 일시정지 중...")
+                        self.price_analysis_log_signal.emit("⏸️ 가격분석 일시정지 중...")
                         time.sleep(1)
                         if self.work_stopped:
-                            self.my_products_log_signal.emit("🛑 가격분석 중지됨")
+                            self.price_analysis_log_signal.emit("🛑 가격분석 중지됨")
                             return
                     
                     # 테이블에서 상품 정보 가져오기
@@ -13505,53 +13633,69 @@ class Main(QMainWindow):
                         # 마진 계산 (내 가격과 최저가의 차이)
                         price_difference = current_price - lowest_price if current_price > 0 else 0
                         
+                        # 상태 결정
+                        if price_difference < -min_margin:
+                            status = f"⚠️ 손실 예상 ({price_difference:+,}엔)"
+                        elif abs(price_difference) <= 100:
+                            status = "✅ 현재가 적정"
+                        else:
+                            status = "💰 가격 수정 필요"
+                        
+                        # 분석 결과 저장
+                        analysis_results[product_name] = {
+                            'lowest_price': lowest_price,
+                            'suggested_price': suggested_price,
+                            'price_difference': price_difference,
+                            'status': status,
+                            'competitor_count': 1  # 실제로는 검색 결과 개수
+                        }
+                        
                         # 테이블 업데이트 (시그널 사용)
                         self.price_analysis_table_update_signal.emit(row, 2, f"¥{lowest_price:,}")
                         self.price_analysis_table_update_signal.emit(row, 3, f"¥{suggested_price:,}")
-                        
-                        # 마진을 가격 차이로 표시
-                        if price_difference > 0:
-                            margin_text = f"+¥{price_difference:,} (비쌈)"
-                        elif price_difference < 0:
-                            margin_text = f"¥{price_difference:,} (저렴함)"
-                        else:
-                            margin_text = "¥0 (동일)"
-                        
-                        self.price_analysis_table_update_signal.emit(row, 4, margin_text)
-                        
-                        # 가격 수정 필요 상태 결정
-                        suggested_difference = suggested_price - current_price
-                        if suggested_difference >= -abs(min_margin):  # -500엔 이상이면 OK
-                            status = "💰 가격 수정 필요"
-                            self.my_products_log_signal.emit(f"✅ {product_name[:20]}... - 최저가: ¥{lowest_price:,}, 제안가: ¥{suggested_price:,}, 차이: {margin_text}")
-                        else:
-                            status = f"⚠️ 손실 예상 ({suggested_difference:+,}엔)"
-                            self.my_products_log_signal.emit(f"⚠️ 손실 예상: {product_name[:20]}... - 제안가 차이: {suggested_difference:+,}엔")
-                        
+                        self.price_analysis_table_update_signal.emit(row, 4, f"{price_difference:+,}엔")
                         self.price_analysis_table_update_signal.emit(row, 5, status)
                         
+                        self.my_products_log_signal.emit(f"✅ 분석 완료: {product_name[:20]}... - 최저가: ¥{lowest_price:,}")
+                        
                     else:
-                        self.price_analysis_table_update_signal.emit(row, 2, "검색 실패")
-                        self.price_analysis_table_update_signal.emit(row, 5, "❌ 최저가 검색 실패")
-                        self.my_products_log_signal.emit(f"⚠️ {product_name[:20]}... - 최저가 검색 실패")
+                        # 분석 실패
+                        analysis_results[product_name] = {
+                            'lowest_price': 0,
+                            'suggested_price': 0,
+                            'price_difference': 0,
+                            'status': '❌ 분석 실패',
+                            'competitor_count': 0
+                        }
+                        
+                        self.price_analysis_table_update_signal.emit(row, 2, "분석 실패")
+                        self.price_analysis_table_update_signal.emit(row, 3, "계산 불가")
+                        self.price_analysis_table_update_signal.emit(row, 4, "-")
+                        self.price_analysis_table_update_signal.emit(row, 5, "❌ 분석 실패")
+                        
+                        self.my_products_log_signal.emit(f"❌ 분석 실패: {product_name[:20]}...")
                     
-                    # 딜레이
+                    # 딜레이 (서버 부하 방지)
                     time.sleep(2)
                     
                 except Exception as e:
                     self.my_products_log_signal.emit(f"❌ 상품 분석 오류 (행 {row}): {str(e)}")
                     continue
             
-            # 분석 완료
-            self.my_products_log_signal.emit("📊 기존 데이터 가격분석 완료!")
+            # 분석 결과를 JSON 파일에 저장
+            if analysis_results:
+                self.my_products_log_signal.emit(f"💾 분석 결과를 JSON 파일에 저장 중...")
+                QTimer.singleShot(0, lambda: self.update_products_json_with_analysis(analysis_results))
             
-            # 완료 시그널 발송
-            self.my_products_finished_signal.emit()
-                
+            self.my_products_log_signal.emit("🎉 모든 상품 가격 분석 완료!")
+            
+            # 가격 분석 완료 후 전체 상품 가격 수정 진행
+            self.start_bulk_price_update()
+            
         except Exception as e:
-            self.my_products_log_signal.emit(f"❌ 기존 데이터 가격분석 오류: {str(e)}")
-            # 오류 시에도 완료 시그널 발송
-            self.my_products_finished_signal.emit()
+            self.my_products_log_signal.emit(f"❌ 가격 분석 오류: {str(e)}")
+            # 오류 시에도 UI 제어 해제
+            self.set_tabs_enabled(True)
     
     @pyqtSlot(str, str)
     def set_progress_complete(self, title, message):
