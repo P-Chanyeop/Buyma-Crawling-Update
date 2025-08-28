@@ -1,0 +1,20 @@
+{
+  "email": "ourshimizu@gmail.com",
+  "password": "dmxmcW5zMTIzIQ==",
+  "browser": "Chrome",
+  "timeout": 5,
+  "retry_count": 3,
+  "crawl_count": 50,
+  "delay_time": 3,
+  "discount_amount": 100,
+  "min_margin": 500,
+  "exclude_loss_products": true,
+  "auto_mode": true,
+  "dashboard_url": "",
+  "dashboard_count": 20,
+  "dashboard_discount": 100,
+  "max_images": 10,
+  "include_images": true,
+  "include_options": true,
+  "skip_duplicates": true
+}

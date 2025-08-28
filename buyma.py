@@ -1639,6 +1639,8 @@ class Main(QMainWindow):
             "상품명", "브랜드", "가격", "이미지 수", "색상/사이즈", "URL", "상태", "액션"
         ])
         
+        # 상품명 컬럼을 편집 가능하게 설정 (자동 시그널 제거)
+        
         # 컬럼 너비 조정 (액션 컬럼을 더 넓게)
         self.crawling_table.setColumnWidth(0, 200)  # 상품명
         self.crawling_table.setColumnWidth(1, 120)  # 브랜드
@@ -1647,7 +1649,7 @@ class Main(QMainWindow):
         self.crawling_table.setColumnWidth(4, 100)  # 색상/사이즈
         self.crawling_table.setColumnWidth(5, 150)  # URL
         self.crawling_table.setColumnWidth(6, 100)  # 상태
-        self.crawling_table.setColumnWidth(7, 200)  # 액션 (4개 버튼 가로 배치용)
+        self.crawling_table.setColumnWidth(7, 250)  # 액션 (5개 버튼 가로 배치용)
         
         # 마지막 컬럼 자동 확장 비활성화 (액션 컬럼 너비 고정)
         self.crawling_table.horizontalHeader().setStretchLastSection(True)
@@ -7589,11 +7591,134 @@ class Main(QMainWindow):
             url_btn.clicked.connect(lambda checked, r=row: self.open_product_url(r))
             action_layout.addWidget(url_btn)
             
+            # 4. 상품명 변경 버튼 추가
+            edit_btn = QPushButton("📝")
+            edit_btn.setFixedSize(25, 25)
+            edit_btn.setToolTip("상품명 변경")
+            edit_btn.setStyleSheet("""
+                QPushButton {
+                    background: #ffc107;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background: #e0a800;
+                }
+            """)
+            edit_btn.clicked.connect(lambda checked, r=row: self.edit_product_name(r))
+            action_layout.addWidget(edit_btn)
+            
+            # 5. 삭제 버튼 추가
+            delete_btn = QPushButton("🗑️")
+            delete_btn.setFixedSize(25, 25)
+            delete_btn.setToolTip("상품 삭제")
+            delete_btn.setStyleSheet("""
+                QPushButton {
+                    background: #dc3545;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background: #c82333;
+                }
+            """)
+            delete_btn.clicked.connect(lambda checked, r=row: self.delete_crawling_item(r))
+            action_layout.addWidget(delete_btn)
+            
             # 테이블에 위젯 설정
             self.crawling_table.setCellWidget(row, 7, action_widget)
             
         except Exception as e:
             self.log_message(f"❌ 액션 버튼 추가 오류: {str(e)}")
+            pass
+            
+    def edit_product_name(self, row):
+        """상품명 변경"""
+        try:
+            current_name = self.crawling_table.item(row, 0).text() if self.crawling_table.item(row, 0) else ""
+            
+            from PyQt6.QtWidgets import QInputDialog
+            new_name, ok = QInputDialog.getText(
+                self, 
+                "상품명 변경", 
+                "새로운 상품명을 입력하세요:",
+                text=current_name
+            )
+            
+            if ok and new_name.strip():
+                # 테이블 업데이트
+                self.crawling_table.setItem(row, 0, QTableWidgetItem(new_name.strip()))
+                
+                # crawled_products에도 반영
+                if hasattr(self, 'crawled_products') and row < len(self.crawled_products):
+                    self.crawled_products[row]['title'] = new_name.strip()
+                
+                self.log_message(f"📝 상품명 변경: {new_name.strip()[:30]}...")
+                
+        except Exception as e:
+            self.log_message(f"❌ 상품명 변경 오류: {str(e)}")
+    
+    def delete_crawling_item(self, row):
+        """크롤링 결과에서 상품 삭제"""
+        try:
+            # 삭제 확인
+            title = self.crawling_table.item(row, 0).text() if self.crawling_table.item(row, 0) else "상품"
+            reply = QMessageBox.question(
+                self, 
+                "상품 삭제 확인", 
+                f"'{title[:30]}...'을(를) 삭제하시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                # 테이블에서 행 삭제
+                self.crawling_table.removeRow(row)
+                
+                # crawled_products에서도 삭제 (인덱스가 맞다면)
+                if hasattr(self, 'crawled_products') and row < len(self.crawled_products):
+                    del self.crawled_products[row]
+                
+                self.log_message(f"✅ 상품 삭제 완료: {title[:30]}...")
+                
+                # 액션 버튼들 다시 연결 (행 번호가 변경되었으므로)
+                self.refresh_action_buttons()
+                
+        except Exception as e:
+            self.log_message(f"❌ 상품 삭제 오류: {str(e)}")
+    
+    def refresh_action_buttons(self):
+        """액션 버튼들의 행 번호 다시 연결"""
+        try:
+            for row in range(self.crawling_table.rowCount()):
+                # 기존 액션 버튼 위젯 가져오기
+                action_widget = self.crawling_table.cellWidget(row, 7)
+                if action_widget:
+                    # 새로운 액션 버튼 위젯으로 교체
+                    self.add_action_buttons_to_crawling_table(row)
+        except Exception as e:
+            self.log_message(f"❌ 액션 버튼 새로고침 오류: {str(e)}")
+    
+    def on_crawling_item_changed(self, item):
+        """크롤링 테이블 아이템 변경 시 처리"""
+        try:
+            row = item.row()
+            col = item.column()
+            
+            # 상품명 컬럼(0)만 편집 가능
+            if col == 0:
+                new_title = item.text()
+                self.log_message(f"📝 상품명 변경: {new_title[:30]}...")
+                
+                # crawled_products에도 반영
+                if hasattr(self, 'crawled_products') and row < len(self.crawled_products):
+                    self.crawled_products[row]['title'] = new_title
+                    
+        except Exception as e:
+            self.log_message(f"❌ 상품명 변경 오류: {str(e)}")
 
     @safe_slot
     def show_crawling_item_detail(self, row, checked=False):
@@ -10241,149 +10366,130 @@ class Main(QMainWindow):
         """크롤링 결과 추가 (메인 스레드에서 안전하게)"""
         try:
             # 크롤링된 상품 데이터를 클래스 변수에 저장
+            if not hasattr(self, 'crawled_products'):
+                self.crawled_products = []
             self.crawled_products.append(item_data)
             
-            # 크롤링 통계 업데이트
-            self.increment_crawled_count()
+            # 크롤링 통계 업데이트 (안전장치 추가)
+            try:
+                self.increment_crawled_count()
+            except:
+                pass
             
-            # 성공/실패 통계 업데이트
-            if item_data.get('status') == '수집 완료':
-                self.increment_success_count()
-            else:
-                self.increment_failed_count()
+            # 성공/실패 통계 업데이트 (안전장치 추가)
+            try:
+                if item_data.get('status') == '수집 완료':
+                    self.increment_success_count()
+                else:
+                    self.increment_failed_count()
+            except:
+                pass
             
-            row = self.crawling_table.rowCount()
-            self.crawling_table.insertRow(row)
-            
-            # 이미지 수 계산
-            images = item_data.get('images', [])
-            image_count = len(images) if images else 0
-            
-            # 색상/사이즈 정보 포맷팅
-            colors = item_data.get('colors', [])
-            sizes = item_data.get('sizes', [])
-            
-            if colors or sizes:
-                colors_sizes_text = f"색상:{len(colors)}개, 사이즈:{len(sizes)}개"
-            else:
-                colors_sizes_text = "정보 없음"
-            
-            # 데이터 설정 (올바른 키 사용)
-            items = [
-                item_data.get('title', 'Unknown'),
-                item_data.get('brand', 'Unknown'),
-                item_data.get('price', 'N/A'),
-                f"{image_count}장",  # 이미지 수 올바르게 계산
-                colors_sizes_text,   # 색상/사이즈 올바르게 포맷팅
-                item_data.get('url', 'N/A'),
-                item_data.get('status', '완료')
-            ]
-            
-            for col, item_text in enumerate(items):
-                item = QTableWidgetItem(str(item_text))
-                # 맑은 고딕 폰트 적용
-                font = item.font()
-                font.setFamily("맑은 고딕")
-                item.setFont(font)
-                self.crawling_table.setItem(row, col, item)
-            
-            # 상태 컬럼 색상 설정
-            status_item = self.crawling_table.item(row, 6)
-            if status_item:
-                if "완료" in status_item.text():
-                    status_item.setForeground(QBrush(QColor("#28a745")))
-                elif "실패" in status_item.text():
-                    status_item.setForeground(QBrush(QColor("#dc3545")))
+            # 테이블 업데이트 (안전장치 추가)
+            try:
+                row = self.crawling_table.rowCount()
+                self.crawling_table.insertRow(row)
                 
-                font = status_item.font()
-                font.setBold(True)
-                font.setFamily("맑은 고딕")
-                status_item.setFont(font)
+                # 이미지 수 계산
+                images = item_data.get('images', [])
+                image_count = len(images) if images else 0
+                
+                # 색상/사이즈 정보 포맷팅
+                colors = item_data.get('colors', [])
+                sizes = item_data.get('sizes', [])
+                
+                if colors or sizes:
+                    colors_sizes_text = f"색상:{len(colors)}개, 사이즈:{len(sizes)}개"
+                else:
+                    colors_sizes_text = "정보 없음"
+                
+                # 데이터 설정 (올바른 키 사용)
+                items = [
+                    item_data.get('title', 'Unknown'),
+                    item_data.get('brand', 'Unknown'),
+                    item_data.get('price', 'N/A'),
+                    f"{image_count}장",  # 이미지 수 올바르게 계산
+                    colors_sizes_text,   # 색상/사이즈 올바르게 포맷팅
+                    item_data.get('url', 'N/A'),
+                    item_data.get('status', '완료')
+                ]
+                
+                for col, item_text in enumerate(items):
+                    try:
+                        item = QTableWidgetItem(str(item_text))
+                        # 맑은 고딕 폰트 적용
+                        font = item.font()
+                        font.setFamily("맑은 고딕")
+                        item.setFont(font)
+                        self.crawling_table.setItem(row, col, item)
+                    except Exception as col_error:
+                        # 개별 컬럼 오류는 무시하고 계속 진행
+                        continue
+                
+                # 상태 컬럼 색상 설정 (안전장치 추가)
+                try:
+                    status_item = self.crawling_table.item(row, 6)
+                    if status_item:
+                        if "완료" in status_item.text():
+                            status_item.setForeground(QBrush(QColor("#28a745")))
+                        elif "실패" in status_item.text():
+                            status_item.setForeground(QBrush(QColor("#dc3545")))
+                        
+                        font = status_item.font()
+                        font.setBold(True)
+                        font.setFamily("맑은 고딕")
+                        status_item.setFont(font)
+                except:
+                    pass
+                
+                # 액션 버튼들 추가 (안전장치 추가)
+                try:
+                    self.add_action_buttons_to_crawling_table(row)
+                except Exception as btn_error:
+                    # 버튼 추가 실패해도 계속 진행
+                    pass
+                
+                # 크롤링 중이면 새로 추가된 액션 버튼도 비활성화
+                try:
+                    if not self.start_crawling_btn.isEnabled():  # 크롤링 중인지 확인
+                        action_widget = self.crawling_table.cellWidget(row, 7)
+                        if action_widget:
+                            action_widget.setEnabled(False)
+                except:
+                    pass
+                
+                # 행 높이를 버튼 높이에 맞춤
+                try:
+                    self.crawling_table.setRowHeight(row, 35)
+                except:
+                    pass
+                
+                # 자동 스크롤 (안전장치 추가)
+                try:
+                    self.crawling_table.scrollToBottom()
+                except:
+                    pass
+                    
+            except Exception as table_error:
+                # 테이블 업데이트 실패해도 로그는 남김
+                print(f"테이블 업데이트 오류: {table_error}")
             
-            # 디버깅 로그 추가
-            self.log_message(f"📊 테이블 추가: {item_data.get('title', 'Unknown')[:20]}... "
-                           f"(이미지:{image_count}장, 색상:{len(colors)}개, 사이즈:{len(sizes)}개)")
-            
-            # 액션 버튼들 (가로 배치)
-            action_widget = QWidget()
-            action_layout = QHBoxLayout(action_widget)
-            action_layout.setContentsMargins(2, 2, 2, 2)
-            action_layout.setSpacing(3)
-            
-            # 1. 상세보기 버튼
-            detail_btn = QPushButton("📋")
-            detail_btn.setToolTip("상품 상세 정보 보기")
-            detail_btn.setFixedSize(35, 28)
-            detail_btn.setStyleSheet("""
-                QPushButton {
-                    background: #007bff;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    font-family: '맑은 고딕';
-                }
-                QPushButton:hover {
-                    background: #0056b3;
-                }
-            """)
-            detail_btn.clicked.connect(lambda checked, r=row: self.show_item_detail(r))
-            action_layout.addWidget(detail_btn)
-            
-            # 2. 바로 업로드 버튼
-            upload_btn = QPushButton("📤")
-            upload_btn.setToolTip("BUYMA에 바로 업로드")
-            upload_btn.setFixedSize(35, 28)
-            upload_btn.setStyleSheet("""
-                QPushButton {
-                    background: #28a745;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    font-family: '맑은 고딕';
-                }
-                QPushButton:hover {
-                    background: #1e7e34;
-                }
-            """)
-            upload_btn.clicked.connect(lambda checked, r=row: self.upload_single_item(r))
-            action_layout.addWidget(upload_btn)
-            
-            # 4. URL 열기 버튼
-            url_btn = QPushButton("🔗")
-            url_btn.setToolTip("원본 상품 페이지 열기")
-            url_btn.setFixedSize(35, 28)
-            url_btn.setStyleSheet("""
-                QPushButton {
-                    background: #6c757d;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    font-family: '맑은 고딕';
-                }
-                QPushButton:hover {
-                    background: #5a6268;
-                }
-            """)
-            url_btn.clicked.connect(lambda checked, r=row: self.open_product_url(r))
-            action_layout.addWidget(url_btn)
-            
-            self.crawling_table.setCellWidget(row, 7, action_widget)
-            
-            # 크롤링 중이면 새로 추가된 액션 버튼도 비활성화
-            if not self.start_crawling_btn.isEnabled():  # 크롤링 중인지 확인
-                action_widget.setEnabled(False)
-            
-            # 행 높이를 버튼 높이에 맞춤
-            self.crawling_table.setRowHeight(row, 35)
-            
-            # 자동 스크롤
-            self.crawling_table.scrollToBottom()
+            # 디버깅 로그 추가 (안전장치 추가)
+            try:
+                self.log_message(f"📊 테이블 추가: {item_data.get('title', 'Unknown')[:20]}... "
+                               f"(이미지:{len(item_data.get('images', []))}장, "
+                               f"색상:{len(item_data.get('colors', []))}개, "
+                               f"사이즈:{len(item_data.get('sizes', []))}개)")
+            except:
+                pass
             
         except Exception as e:
-            print(f"크롤링 결과 추가 오류: {e}")
+            # 최종 안전장치 - 어떤 오류가 발생해도 프로그램이 튕기지 않도록
+            print(f"크롤링 결과 추가 중 심각한 오류: {e}")
+            try:
+                self.log_message(f"❌ 크롤링 결과 추가 오류: {str(e)}")
+            except:
+                pass
     
     def crawling_finished_safe(self):
         """크롤링 완료 처리 (메인 스레드에서 안전하게)"""
@@ -12841,10 +12947,10 @@ class Main(QMainWindow):
                     if row < 50:  # 처음 50개만 즉시 버튼 추가
                         self.add_action_buttons_to_row(row)
                     
-                    # 10개마다 UI 업데이트
+                    # 10개마다 UI 업데이트 (워커 스레드에서는 processEvents 제거)
                     if row % 10 == 0:
-                        from PyQt6.QtWidgets import QApplication
-                        QApplication.processEvents()
+                        # QApplication.processEvents() 제거 - 워커 스레드에서 호출하면 크래시 발생
+                        pass
                         
                 except Exception as e:
                     self.log_message(f"⚠️ 행 {row} 처리 중 오류: {str(e)}")
