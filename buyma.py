@@ -803,17 +803,13 @@ class Main(QMainWindow):
             self.log_message(f"❌ 작업 중지 오류: {str(e)}")
     
     def enable_work_controls(self):
-        """작업 제어 버튼 활성화"""
-        self.pause_work_btn.setEnabled(True)
-        self.stop_work_btn.setEnabled(True)
+        """작업 제어 버튼 활성화 (버튼 제거됨)"""
         self.work_stopped = False
         self.work_paused = False
     
     def disable_work_controls(self):
-        """작업 제어 버튼 비활성화"""
-        self.pause_work_btn.setEnabled(False)
-        self.stop_work_btn.setEnabled(False)
-        self.pause_work_btn.setText("⏸️ 일시정지")
+        """작업 제어 버튼 비활성화 (버튼 제거됨)"""
+        pass
     
     def check_work_status(self):
         """작업 상태 확인 (워커 스레드에서 호출)"""
@@ -2467,51 +2463,7 @@ class Main(QMainWindow):
         monitoring_layout.setContentsMargins(15, 0, 15, 15)
         
         # 작업 제어 버튼들 추가
-        control_layout = QHBoxLayout()
-        
-        self.pause_work_btn = QPushButton("⏸️ 일시정지")
-        self.pause_work_btn.setMinimumHeight(35)
-        self.pause_work_btn.setStyleSheet("""
-            QPushButton {
-                background: #ffc107;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: bold;
-                font-family: '맑은 고딕';
-            }
-            QPushButton:hover {
-                background: #e0a800;
-            }
-        """)
-        self.pause_work_btn.clicked.connect(self.toggle_work_pause)
-        self.pause_work_btn.setEnabled(False)
-        
-        self.stop_work_btn = QPushButton("⏹️ 중지")
-        self.stop_work_btn.setMinimumHeight(35)
-        self.stop_work_btn.setStyleSheet("""
-            QPushButton {
-                background: #dc3545;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: bold;
-                font-family: '맑은 고딕';
-            }
-            QPushButton:hover {
-                background: #c82333;
-            }
-        """)
-        self.stop_work_btn.clicked.connect(self.stop_all_work)
-        self.stop_work_btn.setEnabled(False)
-        
-        control_layout.addWidget(self.pause_work_btn)
-        control_layout.addWidget(self.stop_work_btn)
-        control_layout.addStretch()
-        
-        monitoring_layout.addLayout(control_layout)
+        # 작업 제어 버튼 제거 (중지/일시정지 버튼 없음)
         
         self.log_output = QTextEdit()
         self.log_output.setMaximumHeight(200)  # 높이를 200에서 300으로 증가
@@ -3891,18 +3843,6 @@ class Main(QMainWindow):
             
             # 상품 정보 추출
             for i, link in enumerate(product_links):
-                # 작업 상태 체크
-                if self.work_stopped:
-                    self.crawling_log_signal.emit("🛑 크롤링 중지됨")
-                    break
-                
-                while self.work_paused:
-                    self.crawling_log_signal.emit("⏸️ 크롤링 일시정지 중...")
-                    time.sleep(1)
-                    if self.work_stopped:
-                        self.crawling_log_signal.emit("🛑 크롤링 중지됨")
-                        return
-                
                 if collected_items >= count:
                     break
                 
@@ -5315,11 +5255,8 @@ class Main(QMainWindow):
                 if "모니터링" not in self.tab_widget.tabText(i):
                     self.tab_widget.setTabEnabled(i, enabled)
             
-            # 모니터링 탭의 제어 버튼들은 항상 활성화 유지
-            if hasattr(self, 'pause_work_btn'):
-                self.pause_work_btn.setEnabled(not enabled)  # 작업 중일 때만 활성화
-            if hasattr(self, 'stop_work_btn'):
-                self.stop_work_btn.setEnabled(not enabled)   # 작업 중일 때만 활성화
+            # 모니터링 탭의 제어 버튼들 (제거됨)
+            pass
                 
         except Exception as e:
             self.log_message(f"탭 제어 오류: {str(e)}")
@@ -5443,17 +5380,6 @@ class Main(QMainWindow):
             }
             
             while True:
-                # 작업 상태 체크 추가
-                if self.work_stopped:
-                    self.my_products_log_signal.emit("🛑 내상품 불러오기 중지됨")
-                    break
-                
-                while self.work_paused:
-                    self.my_products_log_signal.emit("⏸️ 내상품 불러오기 일시정지 중...")
-                    time.sleep(1)
-                    if self.work_stopped:
-                        self.my_products_log_signal.emit("🛑 내상품 불러오기 중지됨")
-                        return
                 
                 # 내 상품 페이지로 이동
                 my_products_url = f"https://www.buyma.com/my/sell?duty_kind=all&facet=brand_id%2Ccate_pivot%2Cstatus%2Ctag_ids%2Cshop_labels%2Cstock_state&order=desc&page={page_number}&rows=100&sale_kind=all&sort=item_id&status=for_sale&timesale_kind=all#/"
@@ -5626,17 +5552,6 @@ class Main(QMainWindow):
             # 각 상품별 가격분석 실행
             for row in range(len(display_products)):
                 try:
-                    # 작업 상태 체크 추가
-                    if self.work_stopped:
-                        self.my_products_log_signal.emit("🛑 가격분석 중지됨")
-                        break
-                    
-                    while self.work_paused:
-                        self.my_products_log_signal.emit("⏸️ 가격분석 일시정지 중...")
-                        time.sleep(1)
-                        if self.work_stopped:
-                            self.my_products_log_signal.emit("🛑 가격분석 중지됨")
-                            return
                     
                     product = display_products[row]
                     product_name = product.get('title', '')
@@ -9246,17 +9161,6 @@ class Main(QMainWindow):
             # 각 상품별로 업로드 처리
             for row in range(total_products):
                 try:
-                    # 작업 상태 체크
-                    if self.work_stopped:
-                        self.log_message("🛑 업로드 중지됨")
-                        break
-                    
-                    while self.work_paused:
-                        self.log_message("⏸️ 업로드 일시정지 중...")
-                        time.sleep(1)
-                        if self.work_stopped:
-                            self.log_message("🛑 업로드 중지됨")
-                            return
                     
                     # 중단 요청 확인 (기존 코드 유지)
                     if hasattr(self, 'upload_stopped') and self.upload_stopped:
@@ -11146,17 +11050,6 @@ class Main(QMainWindow):
             
             for i, product in enumerate(self.favorite_products):
                 try:
-                    # 작업 상태 체크
-                    if self.work_stopped:
-                        self.log_message("🛑 주력상품 가격확인 중지됨")
-                        break
-                    
-                    while self.work_paused:
-                        self.log_message("⏸️ 주력상품 가격확인 일시정지 중...")
-                        time.sleep(1)
-                        if self.work_stopped:
-                            self.log_message("🛑 주력상품 가격확인 중지됨")
-                            return
                     
                     product_name = product.get('name', '')
                     current_price = product.get('current_price', 0)
@@ -11277,17 +11170,6 @@ class Main(QMainWindow):
             
             for i, product in enumerate(need_update):
                 try:
-                    # 작업 상태 체크
-                    if self.work_stopped:
-                        self.log_message("🛑 주력상품 가격수정 중지됨")
-                        break
-                    
-                    while self.work_paused:
-                        self.log_message("⏸️ 주력상품 가격수정 일시정지 중...")
-                        time.sleep(1)
-                        if self.work_stopped:
-                            self.log_message("🛑 주력상품 가격수정 중지됨")
-                            return
                     
                     product_name = product.get('name', '')
                     suggested_price = product.get('suggested_price', 0)
@@ -11786,8 +11668,9 @@ class Main(QMainWindow):
             page_number = 1
             lowest_price = float('inf')
             found_products = 0
+            max_pages = 5  # 최대 5페이지까지만 검색
             
-            while True:
+            while page_number <= max_pages:
                 search_url = f"https://www.buyma.com/r/-R120/{search_name}_{page_number}"
                 self.log_message(f"🌐 주력상품 페이지 {page_number} 접속: {search_url}")
                 
@@ -11816,6 +11699,19 @@ class Main(QMainWindow):
                     if not product_items:
                         self.log_message(f"⚠️ 페이지 {page_number}에서 상품을 찾을 수 없습니다.")
                         break
+                    
+                    try:
+                        self.shared_driver.implicitly_wait(1)
+                        a_tag = self.shared_driver.find_element(By.CSS_SELECTOR, "a.search_requestlink_btn")
+                        
+                        if a_tag:   
+                            self.log_message("⚠️ 페이지 {page_number}에서 상품을 찾을 수 없습니다. (검색결과 없음)")
+                            break
+                    except:
+                        pass
+                    
+                    finally:
+                        self.shared_driver.implicitly_wait(10)
                     
                     self.log_message(f"📦 페이지 {page_number}에서 {len(product_items)}개 상품 발견")
                     
@@ -11854,19 +11750,19 @@ class Main(QMainWindow):
                             # 개별 상품 처리 오류는 건너뛰기
                             continue
                     
-                    # 10. 다음 페이지 확인 (li 개수가 120개면 다음 페이지 있음)
-                    if len(product_items) >= 120:
+                    # 10. 다음 페이지 확인 (li 개수가 120개 미만이면 마지막 페이지)
+                    if len(product_items) < 120:
+                        # 마지막 페이지 도달
+                        self.log_message(f"✅ 마지막 페이지 도달 (총 {page_number} 페이지)")
+                        break
+                    else:
                         page_number += 1
                         self.log_message(f"➡️ 다음 페이지({page_number})로 이동...")
                         time.sleep(2)  # 페이지 간 딜레이
-                    else:
-                        # 마지막 페이지 도달
-                        self.log_message(f"✅ 모든 페이지 검색 완료 (총 {page_number} 페이지)")
-                        break
                 
                 except Exception as e:
                     self.log_message(f"❌ 페이지 {page_number} 로딩 실패: {str(e)}")
-                    continue
+                    break
             
             # 11. 결과 반환
             if lowest_price != float('inf'):
@@ -11956,15 +11852,6 @@ class Main(QMainWindow):
     def upload_single_product(self, product_data, product_number, max_images):
         """단일 상품 BUYMA 업로드 - 실제 구현"""
         try:
-            # 작업 상태 체크
-            if self.work_stopped:
-                return {'success': False, 'error': '사용자에 의해 중지됨'}
-            
-            while self.work_paused:
-                self.log_message("⏸️ 업로드 일시정지 중...")
-                time.sleep(1)
-                if self.work_stopped:
-                    return {'success': False, 'error': '사용자에 의해 중지됨'}
             
             # shared_driver 상태 확인
             if not self.shared_driver:
@@ -11995,8 +11882,6 @@ class Main(QMainWindow):
                 return {'success': False, 'error': f'페이지 로딩 실패: {str(e)}'}
             
             # 1. 상품명 입력
-            if self.work_stopped:
-                return {'success': False, 'error': '사용자에 의해 중지됨'}
             
             self.log_message(f"📝 상품명 입력: {product_data['title'][:50]}...")
             result = self.fill_product_title_real(product_data['title'])
@@ -12004,8 +11889,6 @@ class Main(QMainWindow):
                 return {'success': False, 'error': '상품명 입력 실패'}
             
             # 2. 상품 설명 입력
-            if self.work_stopped:
-                return {'success': False, 'error': '사용자에 의해 중지됨'}
             self.log_message(f"📄 상품 설명 입력...")
             result = self.fill_product_description_real(product_data)
             if not result:
@@ -12019,8 +11902,6 @@ class Main(QMainWindow):
                     return {'success': False, 'error': '이미지 업로드 실패'}
             
             # 4. 카테고리 선택
-            if self.work_stopped:
-                return {'success': False, 'error': '사용자에 의해 중지됨'}
             
             self.log_message(f"📂 카테고리 선택...")
             result = self.select_product_category_real(product_data)
@@ -12028,8 +11909,6 @@ class Main(QMainWindow):
                 return {'success': False, 'error': '카테고리 선택 실패'}
             
             # 5. 색상 추가 (크롤링된 색상 데이터가 있는 경우)
-            if self.work_stopped:
-                return {'success': False, 'error': '사용자에 의해 중지됨'}
             if 'colors' in product_data and product_data['colors']:
                 self.log_message(f"🎨 색상 추가: {len(product_data['colors'])}개")
                 result = self.add_product_colors_real(product_data)
@@ -12039,8 +11918,6 @@ class Main(QMainWindow):
                 self.log_message(f"📝 크롤링된 색상 데이터가 없습니다.")
             
             # 6. 사이즈 추가 (크롤링된 사이즈 데이터가 있는 경우)
-            if self.work_stopped:
-                return {'success': False, 'error': '사용자에 의해 중지됨'}
             
             if 'sizes' in product_data and product_data['sizes']:
                 self.log_message(f"📏 사이즈 추가: {len(product_data['sizes'])}개")
@@ -13588,17 +13465,6 @@ class Main(QMainWindow):
             # 각 상품별 가격분석 실행
             for row in range(total_rows):
                 try:
-                    # 작업 상태 체크
-                    if self.work_stopped:
-                        self.my_products_log_signal.emit("🛑 가격분석 중지됨")
-                        break
-                    
-                    while self.work_paused:
-                        self.price_analysis_log_signal.emit("⏸️ 가격분석 일시정지 중...")
-                        time.sleep(1)
-                        if self.work_stopped:
-                            self.price_analysis_log_signal.emit("🛑 가격분석 중지됨")
-                            return
                     
                     # 테이블에서 상품 정보 가져오기
                     product_name_item = self.price_table.item(row, 0)
@@ -13779,17 +13645,6 @@ class Main(QMainWindow):
         
         for i, row in enumerate(need_update):
             try:
-                # 작업 상태 체크
-                if self.work_stopped:
-                    self.log_message("🛑 가격수정 중지됨")
-                    break
-                
-                while self.work_paused:
-                    self.log_message("⏸️ 가격수정 일시정지 중...")
-                    time.sleep(1)
-                    if self.work_stopped:
-                        self.log_message("🛑 가격수정 중지됨")
-                        return
                 
                 product_name = self.price_table.item(row, 0).text()
                 self.log_message(f"💰 가격 수정 중 ({i+1}/{len(need_update)}): {product_name[:30]}...")
