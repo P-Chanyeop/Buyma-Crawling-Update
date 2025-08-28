@@ -1,0 +1,12 @@
+크래시 리포트 - 2025-08-28 13:11:48.826213
+============================================================
+예외 타입: AttributeError
+예외 메시지: 'Main' object has no attribute 'load_my_products_data'
+============================================================
+상세 스택 트레이스:
+Traceback (most recent call last):
+  File "C:\Users\user\Documents\카카오톡 받은 파일\buyma\buyma_git\Buyma-Crawling-Update\buyma.py", line 5809, in analyze_my_products_prices
+    target=self.load_my_products_data,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Main' object has no attribute 'load_my_products_data'
+============================================================

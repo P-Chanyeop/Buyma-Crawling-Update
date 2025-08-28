@@ -620,6 +620,10 @@ class Main(QMainWindow):
     # 진행률 위젯 업데이트 시그널 추가
     update_price_progress_signal = pyqtSignal(int, int, str)  # current, total, status
     hide_price_progress_signal = pyqtSignal()                 # 진행률 위젯 숨기기
+    update_favorite_table_signal = pyqtSignal()              # 주력상품 테이블 업데이트
+    complete_progress_signal = pyqtSignal(str, str)          # 진행률 위젯 완료 (title, message)
+    error_progress_signal = pyqtSignal(str, str)             # 진행률 위젯 오류 (title, message)
+    restore_ui_signal = pyqtSignal()                         # UI 상태 복원
     
     # 내 상품 크롤링 관련 시그널 추가
     my_products_progress_signal = pyqtSignal(int, int, str)   # current, total, status
@@ -694,6 +698,10 @@ class Main(QMainWindow):
         # 진행률 위젯 시그널 연결
         self.update_price_progress_signal.connect(self.update_price_progress_widget_safe)
         self.hide_price_progress_signal.connect(self.hide_price_progress_widget)
+        self.update_favorite_table_signal.connect(self.update_favorite_table)
+        self.complete_progress_signal.connect(self.complete_progress_widget_safe)
+        self.error_progress_signal.connect(self.error_progress_widget_safe)
+        self.restore_ui_signal.connect(self.restore_favorite_analysis_ui)
         
         # 내 상품 크롤링 시그널 연결
         self.my_products_progress_signal.connect(self.update_price_progress_widget_safe)
@@ -5761,11 +5769,50 @@ class Main(QMainWindow):
                 "설정 탭에서 '🔐 BUYMA 로그인' 버튼을 클릭하여 로그인해주세요."
             )
             return
-        
-        if not hasattr(self, 'all_products') or len(self.all_products) == 0:
-            QMessageBox.warning(self, "경고", "먼저 '내 상품 불러오기'를 실행해주세요.")
+
+        # 테이블에 이미 데이터가 있는지 확인 (load_my_products와 동일한 로직)
+        if self.price_table.rowCount() > 0:
+            self.log_message("📊 테이블에 이미 데이터가 있습니다. 바로 가격분석을 시작합니다...")
+            
+            # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
+            self.switch_to_monitoring_tab()
+            self.set_tabs_enabled(False)
+            
+            # 가격분석 진행률 위젯 표시
+            self.price_progress_widget.show()
+            self.update_price_progress_widget(0, self.price_table.rowCount(), "기존 데이터로 가격분석 시작...")
+            
+            # 기존 테이블 데이터로 바로 가격분석 실행
+            import threading
+            self.price_analysis_thread = threading.Thread(
+                target=self.analyze_existing_table_data,
+                daemon=True
+            )
+            self.price_analysis_thread.start()
             return
 
+        # 테이블에 데이터가 없으면 내 상품 불러오기부터 시작
+        if not hasattr(self, 'all_products') or len(self.all_products) == 0:
+            self.log_message("📥 테이블이 비어있습니다. 내 상품 불러오기부터 시작합니다...")
+            
+            # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
+            self.switch_to_monitoring_tab()
+            self.set_tabs_enabled(False)
+            
+            # 가격분석 진행률 위젯 표시
+            self.price_progress_widget.show()
+            self.update_price_progress_widget(0, 100, "내 상품 불러오기 시작...")
+            
+            # 내 상품 불러오기 실행 (완료 후 자동으로 가격분석 시작됨)
+            import threading
+            self.my_products_thread = threading.Thread(
+                target=self.load_my_products,
+                daemon=True
+            )
+            self.my_products_thread.start()
+            return
+
+        # all_products는 있지만 테이블이 비어있는 경우 - 직접 가격분석 시작
         # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
         self.switch_to_monitoring_tab()
         self.set_tabs_enabled(False)
@@ -5783,18 +5830,6 @@ class Main(QMainWindow):
             # 가격분석 진행률 위젯 표시
             self.price_progress_widget.show()
             self.update_price_progress_widget(0, len(self.all_products), "가격 분석 시작...")
-            
-            # 가격수정 진행률 위젯도 함께 표시 (업로드 위젯 재사용)
-            self.upload_progress_widget.show()
-            self.update_upload_progress_widget(0, 100, "가격 수정 대기 중...")
-            
-            # 진행률 위젯 표시 (기존)
-            self.progress_widget.update_progress(
-                0, 
-                len(self.all_products), 
-                "💰 가격 분석 시작", 
-                f"총 {len(self.all_products)}개 상품 분석 예정"
-            )
             
             # 별도 스레드에서 페이지별 순차 분석 실행
             import threading
@@ -5950,7 +5985,7 @@ class Main(QMainWindow):
             edit_url = f"https://www.buyma.com/my/sell/search?sale_kind=all&duty_kind=all&keyword={product_id}&status=for_sale&multi_id=#/"
             self.log_message(f"🔗 상품 수정 페이지 접속: {edit_url}")
             
-            self.driver.get(edit_url)
+            self.shared_driver.get(edit_url)
             import time
             time.sleep(3)
             
@@ -5960,7 +5995,7 @@ class Main(QMainWindow):
                 from selenium.webdriver.support import expected_conditions as EC
                 from selenium.webdriver.common.by import By
                 
-                price_edit_btn = WebDriverWait(self.driver, 10).until(
+                price_edit_btn = WebDriverWait(self.shared_driver, 10).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "a._item_edit_tanka"))
                 )
                 price_edit_btn.click()
@@ -5972,7 +6007,7 @@ class Main(QMainWindow):
             
             # 4. 현재 가격 확인 (BUYMA 페이지에서 실제 가격 읽기)
             try:
-                price_input = WebDriverWait(self.driver, 10).until(
+                price_input = WebDriverWait(self.shared_driver, 10).until(
                     EC.presence_of_element_located((By.NAME, "item_price"))
                 )
                 current_price_on_page = int(price_input.get_attribute("value") or "0")
@@ -6019,7 +6054,7 @@ class Main(QMainWindow):
             
             # 7. 설정하기 버튼 클릭 (a.js-commit-item-price)
             try:
-                commit_btn = WebDriverWait(self.driver, 10).until(
+                commit_btn = WebDriverWait(self.shared_driver, 10).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "a.js-commit-item-price"))
                 )
                 commit_btn.click()
@@ -6141,167 +6176,167 @@ class Main(QMainWindow):
             self.log_error(f"확인 다이얼로그 오류: {str(e)}")
             return False
 
-    def analyze_all_pages_sequentially(self, discount, min_margin, is_auto_mode):
-        """페이지별 순차 처리: 각 페이지마다 최저가 분석 → 가격 수정"""
-        try:
-            total_analyzed = 0
-            total_updated = 0
-            total_cancelled = 0
-            total_failed = 0
+    # def analyze_all_pages_sequentially(self, discount, min_margin, is_auto_mode):
+    #     """페이지별 순차 처리: 각 페이지마다 최저가 분석 → 가격 수정"""
+    #     try:
+    #         total_analyzed = 0
+    #         total_updated = 0
+    #         total_cancelled = 0
+    #         total_failed = 0
             
-            # 가격수정 진행률 추적용 카운터
-            price_update_progress = 0
+    #         # 가격수정 진행률 추적용 카운터
+    #         price_update_progress = 0
 
-            # 현재 페이지부터 시작
-            start_page = self.current_page
-            self.price_analysis_log_signal.emit(f"🚀 페이지별 순차 처리 시작 (시작 페이지: {start_page + 1})")
+    #         # 현재 페이지부터 시작
+    #         start_page = self.current_page
+    #         self.price_analysis_log_signal.emit(f"🚀 페이지별 순차 처리 시작 (시작 페이지: {start_page + 1})")
 
-            # 현재 페이지부터 마지막 페이지까지 처리
-            for page_offset in range(self.total_pages):
-                page_num = (start_page + page_offset) % self.total_pages  # 순환 처리
+    #         # 현재 페이지부터 마지막 페이지까지 처리
+    #         for page_offset in range(self.total_pages):
+    #             page_num = (start_page + page_offset) % self.total_pages  # 순환 처리
                 
-                self.price_analysis_log_signal.emit(f"📄 페이지 {page_num + 1}/{self.total_pages} 처리 시작...")
+    #             self.price_analysis_log_signal.emit(f"📄 페이지 {page_num + 1}/{self.total_pages} 처리 시작...")
 
-                # 현재 페이지 상품들 가져오기
-                start_idx = page_num * self.page_size
-                end_idx = min(start_idx + self.page_size, len(self.all_products))
-                current_page_products = self.all_products[start_idx:end_idx]
+    #             # 현재 페이지 상품들 가져오기
+    #             start_idx = page_num * self.page_size
+    #             end_idx = min(start_idx + self.page_size, len(self.all_products))
+    #             current_page_products = self.all_products[start_idx:end_idx]
 
-                # 해당 페이지로 이동 (시그널 사용)
-                self.price_analysis_log_signal.emit(f"페이지 {page_num + 1}로 이동 중...")
-                # 페이지 이동은 메인 스레드에서 처리해야 함
-                import time
-                time.sleep(1)  # 페이지 전환 대기
+    #             # 해당 페이지로 이동 (시그널 사용)
+    #             self.price_analysis_log_signal.emit(f"페이지 {page_num + 1}로 이동 중...")
+    #             # 페이지 이동은 메인 스레드에서 처리해야 함
+    #             import time
+    #             time.sleep(1)  # 페이지 전환 대기
 
-                # ==================== 1단계: 현재 페이지 최저가 검색 ====================
-                self.price_analysis_log_signal.emit(f"🔍 페이지 {page_num + 1} - 1단계: 최저가 검색 ({len(current_page_products)}개 상품)")
+    #             # ==================== 1단계: 현재 페이지 최저가 검색 ====================
+    #             self.price_analysis_log_signal.emit(f"🔍 페이지 {page_num + 1} - 1단계: 최저가 검색 ({len(current_page_products)}개 상품)")
 
-                # 현재 페이지 상품들 분석 (가격 수정 없이 최저가 검색만)
-                page_analyzed, _, page_failed = self.analyze_current_page_products(
-                    current_page_products, discount, min_margin, is_auto_mode, start_idx
-                )
+    #             # 현재 페이지 상품들 분석 (가격 수정 없이 최저가 검색만)
+    #             page_analyzed, _, page_failed = self.analyze_current_page_products(
+    #                 current_page_products, discount, min_margin, is_auto_mode, start_idx
+    #             )
 
-                total_analyzed += page_analyzed
-                total_failed += page_failed
+    #             total_analyzed += page_analyzed
+    #             total_failed += page_failed
 
-                # 진행률 위젯 업데이트 (분석 단계) - 시그널 사용
-                status_text = f"💰 가격 분석 진행 중"
-                detail_text = f"페이지 {page_num + 1}/{self.total_pages} - 분석 완료: {total_analyzed}개"
+    #             # 진행률 위젯 업데이트 (분석 단계) - 시그널 사용
+    #             status_text = f"💰 가격 분석 진행 중"
+    #             detail_text = f"페이지 {page_num + 1}/{self.total_pages} - 분석 완료: {total_analyzed}개"
                 
-                self.price_analysis_log_signal.emit(f"진행률 업데이트: {total_analyzed}/{len(self.all_products)}")
+    #             self.price_analysis_log_signal.emit(f"진행률 업데이트: {total_analyzed}/{len(self.all_products)}")
                 
-                # 가격분석 진행률 위젯 업데이트 (시그널 사용)
-                self.update_price_progress_signal.emit(
-                    total_analyzed, 
-                    len(self.all_products), 
-                    f"{status_text} - {detail_text}"
-                )
+    #             # 가격분석 진행률 위젯 업데이트 (시그널 사용)
+    #             self.update_price_progress_signal.emit(
+    #                 total_analyzed, 
+    #                 len(self.all_products), 
+    #                 f"{status_text} - {detail_text}"
+    #             )
 
-                self.price_analysis_log_signal.emit(f"✅ 페이지 {page_num + 1} 최저가 검색 완료: 분석 {page_analyzed}개, 실패 {page_failed}개")
+    #             self.price_analysis_log_signal.emit(f"✅ 페이지 {page_num + 1} 최저가 검색 완료: 분석 {page_analyzed}개, 실패 {page_failed}개")
 
-                # ==================== 2단계: 현재 페이지 가격 수정 ====================
-                self.price_analysis_log_signal.emit(f"💰 페이지 {page_num + 1} - 2단계: 가격 수정")
+    #             # ==================== 2단계: 현재 페이지 가격 수정 ====================
+    #             self.price_analysis_log_signal.emit(f"💰 페이지 {page_num + 1} - 2단계: 가격 수정")
 
-                # 현재 페이지에서 수정 필요한 상품들 찾기
-                page_products_to_update = []
-                for local_idx, global_idx in enumerate(range(start_idx, end_idx)):
-                    if global_idx < len(self.all_products):
-                        product = self.all_products[global_idx]
-                        if product.get('needs_update', False):
-                            page_products_to_update.append((local_idx, global_idx, product))
+    #             # 현재 페이지에서 수정 필요한 상품들 찾기
+    #             page_products_to_update = []
+    #             for local_idx, global_idx in enumerate(range(start_idx, end_idx)):
+    #                 if global_idx < len(self.all_products):
+    #                     product = self.all_products[global_idx]
+    #                     if product.get('needs_update', False):
+    #                         page_products_to_update.append((local_idx, global_idx, product))
 
-                if len(page_products_to_update) == 0:
-                    self.price_analysis_log_signal.emit(f"📋 페이지 {page_num + 1}: 가격 수정이 필요한 상품이 없습니다.")
-                else:
-                    self.price_analysis_log_signal.emit(f"📊 페이지 {page_num + 1}: {len(page_products_to_update)}개 상품 가격 수정 시작")
+    #             if len(page_products_to_update) == 0:
+    #                 self.price_analysis_log_signal.emit(f"📋 페이지 {page_num + 1}: 가격 수정이 필요한 상품이 없습니다.")
+    #             else:
+    #                 self.price_analysis_log_signal.emit(f"📊 페이지 {page_num + 1}: {len(page_products_to_update)}개 상품 가격 수정 시작")
                     
-                    # 가격수정 진행률 위젯 업데이트 (첫 번째 페이지에서 총 개수 설정)
-                    if page_num == 0:
-                        total_update_count = sum(1 for row in range(self.price_table.rowCount()) 
-                                               if self.price_table.item(row, 5) and "수정 필요" in self.price_table.item(row, 5).text())
-                        self.update_upload_progress_widget(0, total_update_count, "가격 수정 시작...")
+    #                 # 가격수정 진행률 위젯 업데이트 (첫 번째 페이지에서 총 개수 설정)
+    #                 if page_num == 0:
+    #                     total_update_count = sum(1 for row in range(self.price_table.rowCount()) 
+    #                                            if self.price_table.item(row, 5) and "수정 필요" in self.price_table.item(row, 5).text())
+    #                     self.update_upload_progress_widget(0, total_update_count, "가격 수정 시작...")
 
-                    # 현재 페이지 상품들 가격 수정
-                    page_updated = 0
-                    page_cancelled = 0
+    #                 # 현재 페이지 상품들 가격 수정
+    #                 page_updated = 0
+    #                 page_cancelled = 0
 
-                    for idx, (local_row, global_idx, product) in enumerate(page_products_to_update):
-                        try:
-                            product_name = product['title']
-                            suggested_price = product.get('suggested_price', 0)
+    #                 for idx, (local_row, global_idx, product) in enumerate(page_products_to_update):
+    #                     try:
+    #                         product_name = product['title']
+    #                         suggested_price = product.get('suggested_price', 0)
 
-                            self.price_analysis_log_signal.emit(f"💰 가격 수정 중 ({idx + 1}/{len(page_products_to_update)}): {product_name[:30]}...")
+    #                         self.price_analysis_log_signal.emit(f"💰 가격 수정 중 ({idx + 1}/{len(page_products_to_update)}): {product_name[:30]}...")
 
-                            # 테이블 상태 업데이트
-                            self.price_analysis_table_update_signal.emit(local_row, 5, "🔄 가격 수정 중...")
+    #                         # 테이블 상태 업데이트
+    #                         self.price_analysis_table_update_signal.emit(local_row, 5, "🔄 가격 수정 중...")
 
-                            # 실제 가격 수정 로직 호출
-                            result = self.update_buyma_product_price(product_name, suggested_price, is_auto_mode)
+    #                         # 실제 가격 수정 로직 호출
+    #                         result = self.update_buyma_product_price(product_name, suggested_price, is_auto_mode)
 
-                            if result == True:
-                                self.price_analysis_table_update_signal.emit(local_row, 5, "✅ 수정 완료")
-                                self.all_products[global_idx]['status'] = "✅ 수정 완료"
-                                page_updated += 1
-                                total_updated += 1
-                                price_update_progress += 1
+    #                         if result == True:
+    #                             self.price_analysis_table_update_signal.emit(local_row, 5, "✅ 수정 완료")
+    #                             self.all_products[global_idx]['status'] = "✅ 수정 완료"
+    #                             page_updated += 1
+    #                             total_updated += 1
+    #                             price_update_progress += 1
                                 
-                                # 가격수정 진행률 위젯 업데이트
-                                total_update_count = sum(1 for row in range(self.price_table.rowCount()) 
-                                                       if self.price_table.item(row, 5) and "수정 필요" in self.price_table.item(row, 5).text())
-                                self.update_upload_progress_widget(price_update_progress, total_update_count, f"가격 수정 중: {product_name[:20]}...")
+    #                             # 가격수정 진행률 위젯 업데이트
+    #                             total_update_count = sum(1 for row in range(self.price_table.rowCount()) 
+    #                                                    if self.price_table.item(row, 5) and "수정 필요" in self.price_table.item(row, 5).text())
+    #                             self.update_upload_progress_widget(price_update_progress, total_update_count, f"가격 수정 중: {product_name[:20]}...")
                                 
-                                self.price_analysis_log_signal.emit(f"✅ 가격 수정 완료: {product_name[:20]}... → ¥{suggested_price:,}")
-                            elif result == "cancelled":
-                                self.price_analysis_table_update_signal.emit(local_row, 5, "❌ 상품 수정 취소")
-                                self.all_products[global_idx]['status'] = "❌ 상품 수정 취소"
-                                page_cancelled += 1
-                                total_cancelled += 1
-                                self.price_analysis_log_signal.emit(f"❌ 상품 수정 취소: {product_name[:20]}...")
-                            else:
-                                self.price_analysis_table_update_signal.emit(local_row, 5, "❌ 수정 실패")
-                                self.all_products[global_idx]['status'] = "❌ 수정 실패"
-                                self.price_analysis_log_signal.emit(f"❌ 가격 수정 실패: {product_name[:20]}...")
+    #                             self.price_analysis_log_signal.emit(f"✅ 가격 수정 완료: {product_name[:20]}... → ¥{suggested_price:,}")
+    #                         elif result == "cancelled":
+    #                             self.price_analysis_table_update_signal.emit(local_row, 5, "❌ 상품 수정 취소")
+    #                             self.all_products[global_idx]['status'] = "❌ 상품 수정 취소"
+    #                             page_cancelled += 1
+    #                             total_cancelled += 1
+    #                             self.price_analysis_log_signal.emit(f"❌ 상품 수정 취소: {product_name[:20]}...")
+    #                         else:
+    #                             self.price_analysis_table_update_signal.emit(local_row, 5, "❌ 수정 실패")
+    #                             self.all_products[global_idx]['status'] = "❌ 수정 실패"
+    #                             self.price_analysis_log_signal.emit(f"❌ 가격 수정 실패: {product_name[:20]}...")
 
-                            # 수정 간 딜레이
-                            time.sleep(2)
+    #                         # 수정 간 딜레이
+    #                         time.sleep(2)
 
-                        except Exception as e:
-                            self.price_analysis_log_signal.emit(f"❌ 가격 수정 오류 ({global_idx + 1}): {str(e)}")
-                            continue
+    #                     except Exception as e:
+    #                         self.price_analysis_log_signal.emit(f"❌ 가격 수정 오류 ({global_idx + 1}): {str(e)}")
+    #                         continue
 
-                    self.price_analysis_log_signal.emit(f"✅ 페이지 {page_num + 1} 가격 수정 완료: 수정 {page_updated}개, 취소 {page_cancelled}개")
+    #                 self.price_analysis_log_signal.emit(f"✅ 페이지 {page_num + 1} 가격 수정 완료: 수정 {page_updated}개, 취소 {page_cancelled}개")
 
-                # 페이지 완료 로그
-                self.price_analysis_log_signal.emit(f"🎉 페이지 {page_num + 1} 전체 완료!")
+    #             # 페이지 완료 로그
+    #             self.price_analysis_log_signal.emit(f"🎉 페이지 {page_num + 1} 전체 완료!")
                 
-                # 페이지 간 딜레이 (서버 부하 방지)
-                time.sleep(3)
+    #             # 페이지 간 딜레이 (서버 부하 방지)
+    #             time.sleep(3)
 
-            # 전체 처리 완료
-            self.price_analysis_log_signal.emit(f"🎉 전체 페이지별 순차 처리 완료!")
-            self.price_analysis_log_signal.emit(f"📊 최종 결과:")
-            self.price_analysis_log_signal.emit(f"   - 분석 완료: {total_analyzed}개")
-            self.price_analysis_log_signal.emit(f"   - 가격 수정: {total_updated}개")
-            self.price_analysis_log_signal.emit(f"   - 수정 취소: {total_cancelled}개")
-            self.price_analysis_log_signal.emit(f"   - 검색 실패: {total_failed}개")
+    #         # 전체 처리 완료
+    #         self.price_analysis_log_signal.emit(f"🎉 전체 페이지별 순차 처리 완료!")
+    #         self.price_analysis_log_signal.emit(f"📊 최종 결과:")
+    #         self.price_analysis_log_signal.emit(f"   - 분석 완료: {total_analyzed}개")
+    #         self.price_analysis_log_signal.emit(f"   - 가격 수정: {total_updated}개")
+    #         self.price_analysis_log_signal.emit(f"   - 수정 취소: {total_cancelled}개")
+    #         self.price_analysis_log_signal.emit(f"   - 검색 실패: {total_failed}개")
 
-            # 진행률 위젯 완료 상태 (시그널 사용)
-            self.progress_complete_signal.emit(
-                "가격 분석 완료", 
-                f"분석: {total_analyzed}개, 수정: {total_updated}개"
-            )
+    #         # 진행률 위젯 완료 상태 (시그널 사용)
+    #         self.progress_complete_signal.emit(
+    #             "가격 분석 완료", 
+    #             f"분석: {total_analyzed}개, 수정: {total_updated}개"
+    #         )
             
-            # 가격수정 진행률 위젯도 완료 상태로 설정
-            self.upload_progress_widget.hide()
+    #         # 가격수정 진행률 위젯도 완료 상태로 설정
+    #         self.upload_progress_widget.hide()
 
-            # UI 제어 해제 (시그널로)
-            self.price_analysis_finished_signal.emit()
+    #         # UI 제어 해제 (시그널로)
+    #         self.price_analysis_finished_signal.emit()
 
-        except Exception as e:
-            self.price_analysis_log_signal.emit(f"❌ 페이지별 순차 처리 오류: {str(e)}")
-            # 오류 시 진행률 위젯에 오류 표시 (시그널 사용)
-            self.progress_error_signal.emit("가격 분석 오류", str(e))
-            self.price_analysis_finished_signal.emit()
+    #     except Exception as e:
+    #         self.price_analysis_log_signal.emit(f"❌ 페이지별 순차 처리 오류: {str(e)}")
+    #         # 오류 시 진행률 위젯에 오류 표시 (시그널 사용)
+    #         self.progress_error_signal.emit("가격 분석 오류", str(e))
+    #         self.price_analysis_finished_signal.emit()
     
     def display_page_safe(self, page_num):
         """페이지 표시 (메인 스레드에서 안전하게)"""
@@ -10520,7 +10555,7 @@ class Main(QMainWindow):
             self.fav_start_analysis_btn.setText("🔄 진행 중...")
             
             # 진행률 위젯 표시
-            self.progress_widget.update_progress(
+            self.price_progress_widget.update_progress(
                 0, 
                 len(self.favorite_products), 
                 "⭐ 주력상품 통합 처리", 
@@ -11251,8 +11286,8 @@ class Main(QMainWindow):
                     failed_count += 1
                     continue
             
-            # 테이블 업데이트
-            QTimer.singleShot(0, self.update_favorite_table)
+            # 테이블 업데이트 (시그널 사용)
+            self.update_favorite_table_signal.emit()
             
             self.log_message(f"✅ 1단계 완료: 분석 {analyzed_count}개, 실패 {failed_count}개")
             
@@ -11264,11 +11299,11 @@ class Main(QMainWindow):
             
             if len(need_update) == 0:
                 self.log_message("📋 가격 수정이 필요한 상품이 없습니다.")
-                # 수정할 상품이 없어도 진행률 위젯을 완료 상태로 설정
-                QTimer.singleShot(0, lambda: self.progress_widget.set_task_complete(
+                # 수정할 상품이 없어도 진행률 위젯을 완료 상태로 설정 (시그널 사용)
+                self.complete_progress_signal.emit(
                     "주력상품 통합 처리 완료", 
                     f"분석: {analyzed_count}개, 수정: 0개"
-                ))
+                )
             else:
                 self.log_message(f"📊 {len(need_update)}개 상품 가격 수정 시작")
                 
@@ -11279,44 +11314,43 @@ class Main(QMainWindow):
                         
                         self.log_message(f"💰 가격 수정 중 ({i+1}/{len(need_update)}): {product_name}")
                         
-                        # 진행률 위젯 업데이트 (2단계)
-                        QTimer.singleShot(0, lambda idx=i: self.progress_widget.update_progress(
-                            len(self.favorite_products) + idx + 1, 
+                        # 진행률 위젯 업데이트 (2단계) - 시그널 사용
+                        self.update_price_progress_signal.emit(
+                            len(self.favorite_products) + i + 1, 
                             len(self.favorite_products) * 2,
-                            "⭐ 주력상품 가격수정", 
-                            f"수정 중: {product_name[:20]}..."
-                        ))
+                            f"⭐ 주력상품 가격수정 - 수정 중: {product_name[:20]}..."
+                        )
                         
                         # 수동 모드인 경우 사용자 확인
-                        if not is_auto_mode:
-                            # 메인 스레드에서 확인 다이얼로그 표시
-                            confirm_result = [None]  # 리스트로 감싸서 참조 전달
+                        # if not is_auto_mode:
+                        #     # 메인 스레드에서 확인 다이얼로그 표시
+                        #     confirm_result = [None]  # 리스트로 감싸서 참조 전달
                             
-                            def show_confirm_dialog():
-                                reply = QMessageBox.question(
-                                    self,
-                                    "가격 수정 확인",
-                                    f"상품: {product_name}\n"
-                                    f"현재가: {product.get('current_price', 0):,}엔\n"
-                                    f"제안가: {suggested_price:,}엔\n\n"
-                                    f"가격을 수정하시겠습니까?",
-                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                                )
-                                confirm_result[0] = (reply == QMessageBox.StandardButton.Yes)
+                        #     def show_confirm_dialog():
+                        #         reply = QMessageBox.question(
+                        #             self,
+                        #             "가격 수정 확인",
+                        #             f"상품: {product_name}\n"
+                        #             f"현재가: {product.get('current_price', 0):,}엔\n"
+                        #             f"제안가: {suggested_price:,}엔\n\n"
+                        #             f"가격을 수정하시겠습니까?",
+                        #             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                        #         )
+                        #         confirm_result[0] = (reply == QMessageBox.StandardButton.Yes)
                             
-                            QTimer.singleShot(0, show_confirm_dialog)
+                        #     QTimer.singleShot(0, show_confirm_dialog)
                             
-                            # 사용자 응답 대기
-                            import time
-                            timeout = 30  # 30초 타임아웃
-                            elapsed = 0
-                            while elapsed < timeout and confirm_result[0] is None:
-                                time.sleep(0.1)
-                                elapsed += 0.1
+                        #     # 사용자 응답 대기
+                        #     import time
+                        #     timeout = 30  # 30초 타임아웃
+                        #     elapsed = 0
+                        #     while elapsed < timeout and confirm_result[0] is None:
+                        #         time.sleep(0.1)
+                        #         elapsed += 0.1
                             
-                            if confirm_result[0] is None or not confirm_result[0]:
-                                self.log_message(f"⏭️ 사용자 취소: {product_name}")
-                                continue
+                        #     if confirm_result[0] is None or not confirm_result[0]:
+                        #         self.log_message(f"⏭️ 사용자 취소: {product_name}")
+                        #         continue
                         
                         # 가격관리 탭의 가격수정 로직 활용
                         success = self.update_buyma_product_price_for_favorite(product, suggested_price, is_auto_mode)
@@ -11335,14 +11369,14 @@ class Main(QMainWindow):
                         self.log_message(f"❌ 가격 수정 오류: {product.get('name', 'Unknown')} - {str(e)}")
                         continue
                 
-                # 수정 작업 완료 후 진행률 위젯 완료 상태
-                QTimer.singleShot(0, lambda: self.progress_widget.set_task_complete(
+                # 수정 작업 완료 후 진행률 위젯 완료 상태 (시그널 사용)
+                self.complete_progress_signal.emit(
                     "주력상품 통합 처리 완료", 
                     f"분석: {analyzed_count}개, 수정: {updated_count}개"
-                ))
+                )
             
-            # 최종 테이블 업데이트 및 저장
-            QTimer.singleShot(0, self.update_favorite_table)
+            # 최종 테이블 업데이트 및 저장 (시그널 사용)
+            self.update_favorite_table_signal.emit()
             QTimer.singleShot(0, self.save_favorite_products_auto)
             
             # 완료 처리
@@ -11352,24 +11386,26 @@ class Main(QMainWindow):
             self.log_message(f"   - 가격 수정: {updated_count}개")
             self.log_message(f"   - 처리 실패: {failed_count}개")
             
-            # UI 상태 복원
-            QTimer.singleShot(0, self.restore_favorite_analysis_ui)
+            # UI 상태 복원 (시그널 사용)
+            self.restore_ui_signal.emit()
             
         except Exception as e:
             self.log_message(f"❌ 주력상품 통합 처리 오류: {str(e)}")
-            # 오류 시 진행률 위젯에 오류 표시
-            QTimer.singleShot(0, lambda: self.progress_widget.set_task_error(
+            # 오류 시 진행률 위젯에 오류 표시 (시그널 사용)
+            self.error_progress_signal.emit(
                 "주력상품 통합 처리 오류", 
                 str(e)
-            ))
-            # UI 상태 복원
-            QTimer.singleShot(0, self.restore_favorite_analysis_ui)
+            )
+            # UI 상태 복원 (시그널 사용)
+            self.restore_ui_signal.emit()
     
     def restore_favorite_analysis_ui(self):
         """주력상품 분석 UI 상태 복원"""
         try:
             self.fav_start_analysis_btn.setEnabled(True)
             self.fav_start_analysis_btn.setText("🚀 가격확인-가격수정 시작")
+            # UI 탭 활성화 복원
+            self.set_tabs_enabled(True)
         except Exception as e:
             self.log_message(f"UI 복원 오류: {str(e)}")
     
@@ -12912,6 +12948,22 @@ class Main(QMainWindow):
         except Exception as e:
             self.log_message(f"⚠️ 진행률 위젯 업데이트 오류: {str(e)}")
     
+    @pyqtSlot(str, str)
+    def complete_progress_widget_safe(self, title, message):
+        """스레드 안전 진행률 위젯 완료 처리"""
+        try:
+            self.price_progress_widget.set_task_complete(title, message)
+        except Exception as e:
+            self.log_message(f"⚠️ 진행률 완료 처리 오류: {str(e)}")
+    
+    @pyqtSlot(str, str)
+    def error_progress_widget_safe(self, title, message):
+        """스레드 안전 진행률 위젯 오류 처리"""
+        try:
+            self.price_progress_widget.set_task_error(title, message)
+        except Exception as e:
+            self.log_message(f"⚠️ 진행률 오류 처리 오류: {str(e)}")
+    
     @pyqtSlot()
     def on_my_products_finished(self):
         """내 상품 크롤링 완료 처리"""
@@ -13260,13 +13312,13 @@ class Main(QMainWindow):
         # 시그널로 메인 스레드에 다이얼로그 표시 요청
         self.show_confirmation_signal.emit("상품 등록 확인", message, title)
         
-        # 결과 대기 (무한 대기)
+        # 결과 대기 (더 안전한 방식)
         import time
-        from PyQt6.QtWidgets import QApplication
         
         wait_count = 0
-        while self.confirmation_result is None:
-            QApplication.processEvents()
+        max_wait = 3000  # 최대 5분 대기 (30초 * 100)
+        
+        while self.confirmation_result is None and wait_count < max_wait:
             time.sleep(0.1)
             wait_count += 1
             
@@ -13274,7 +13326,13 @@ class Main(QMainWindow):
             if wait_count % 100 == 0:
                 self.log_message("⏳ 사용자 응답 대기 중...")
         
-        result = self.confirmation_result
+        # 타임아웃 처리
+        if self.confirmation_result is None:
+            self.log_message("⚠️ 사용자 응답 타임아웃 - 취소로 처리")
+            result = False
+        else:
+            result = self.confirmation_result
+        
         self.confirmation_result = None  # 결과 초기화
         
         self.log_message(f"✅ 사용자 응답 완료: {'승인' if result else '취소'}")
