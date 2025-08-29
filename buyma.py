@@ -631,7 +631,13 @@ class Main(QMainWindow):
     error_progress_signal = pyqtSignal(str, str)             # 진행률 위젯 오류 (title, message)
     restore_ui_signal = pyqtSignal()                         # UI 상태 복원
     
-    # 내 상품 크롤링 관련 시그널 추가
+    # 업로드 UI 업데이트용 시그널 추가
+    upload_progress_signal = pyqtSignal(int)                 # 업로드 진행률
+    upload_status_signal = pyqtSignal(str)                   # 업로드 상태 텍스트
+    upload_finished_signal = pyqtSignal()                    # 업로드 완료
+    
+    # 가격 테이블 업데이트용 시그널 추가
+    price_table_update_signal = pyqtSignal(int, str, bool)  # row, status, success
     my_products_progress_signal = pyqtSignal(int, int, str)   # current, total, status
     my_products_log_signal = pyqtSignal(str)                 # 로그 메시지
     my_products_finished_signal = pyqtSignal()               # 완료
@@ -718,6 +724,14 @@ class Main(QMainWindow):
         self.complete_progress_signal.connect(self.complete_progress_widget_safe)
         self.error_progress_signal.connect(self.error_progress_widget_safe)
         self.restore_ui_signal.connect(self.restore_favorite_analysis_ui)
+        
+        # 업로드 UI 업데이트 시그널 연결
+        self.upload_progress_signal.connect(self.update_upload_progress_safe)
+        self.upload_status_signal.connect(self.update_upload_status_safe)
+        self.upload_finished_signal.connect(self.on_upload_finished)
+        
+        # 가격 테이블 업데이트 시그널 연결
+        self.price_table_update_signal.connect(self.update_price_table_status_safe)
         
         # 내 상품 크롤링 시그널 연결
         self.my_products_progress_signal.connect(self.update_price_progress_widget_safe)
@@ -8372,17 +8386,17 @@ class Main(QMainWindow):
                 
                 if success:
                     self.log_message(f"✅ 가격 수정 완료: {product_name}")
-                    self.update_price_table_status(row, "수정 완료", True)
+                    self.price_table_update_signal.emit(row, "수정 완료", True)
                 else:
                     self.log_message(f"❌ 가격 수정 실패: {product_name}")
-                    self.update_price_table_status(row, "수정 실패", False)
+                    self.price_table_update_signal.emit(row, "수정 실패", False)
             else:
                 self.log_message("❌ BUYMA 로그인 실패")
-                self.update_price_table_status(row, "로그인 실패", False)
+                self.price_table_update_signal.emit(row, "로그인 실패", False)
                 
         except Exception as e:
             self.log_message(f"❌ 가격 수정 오류: {str(e)}")
-            self.update_price_table_status(row, "오류 발생", False)
+            self.price_table_update_signal.emit(row, "오류 발생", False)
         finally:
             if driver:
                 driver.quit()
@@ -8606,8 +8620,9 @@ class Main(QMainWindow):
             self.log_message(f"상품 가격 업데이트 오류: {str(e)}")
             return False
     
-    def update_price_table_status(self, row, status, success):
-        """가격 테이블 상태 업데이트"""
+    @safe_slot
+    def update_price_table_status_safe(self, row, status, success):
+        """가격 테이블 상태 업데이트 (안전)"""
         try:
             # 상태 업데이트
             if success:
@@ -9179,11 +9194,11 @@ class Main(QMainWindow):
                         failed_count += 1
                         continue
                     
-                    # 진행률 업데이트
+                    # 진행률 업데이트 (시그널로 안전하게)
                     progress = int((row / total_products) * 100)
-                    self.upload_progress.setValue(progress)
+                    self.upload_progress_signal.emit(progress)
                     status_text = f"업로드 중: {row + 1}/{total_products} - {product_data['title'][:30]}..."
-                    self.current_upload_status.setText(status_text)
+                    self.upload_status_signal.emit(status_text)
                     
                     # 업로드 진행률 위젯 업데이트
                     self.update_upload_progress_widget(row + 1, total_products, status_text)
@@ -9249,9 +9264,9 @@ class Main(QMainWindow):
                     
                     continue
             
-            # 업로드 완료
-            self.upload_progress.setValue(100)
-            self.current_upload_status.setText("업로드 완료")
+            # 업로드 완료 (시그널로 UI 업데이트)
+            self.upload_progress_signal.emit(100)
+            self.upload_status_signal.emit("업로드 완료")
             
             self.log_message(f"🎉 업로드 완료!")
             self.log_message(f"📊 결과: 성공 {uploaded_count}개, 실패 {failed_count}개")
@@ -9261,29 +9276,17 @@ class Main(QMainWindow):
             print(e)
         
         finally:
-            # UI 상태 복원
-            try:
-                self.start_upload_btn.setEnabled(True)
-                self.pause_upload_btn.setEnabled(False)
-                self.stop_upload_btn.setEnabled(False)
-                self.current_upload_status.setText("대기 중")
-                
-                # 업로드 진행률 위젯 숨기기
-                if hasattr(self, 'upload_progress_widget'):
-                    self.upload_progress_widget.hide()
-                
-                # 다른 탭 활성화
-                self.set_tabs_enabled(True)
-                
-            except Exception as e:
-                self.log_message(f"❌ UI 상태 복원 오류: {str(e)}")
-                failed_count = 0
-            
-            success_count = uploaded_count
+            # UI 상태 복원 (시그널로 처리)
+            self.upload_finished_signal.emit()
             
             # 완료 처리
+            success_count = uploaded_count
+            failed_count = failed_count
             self.log_message(f"🎉 업로드 완료! 성공: {success_count}개, 실패: {failed_count}개")
             self.current_upload_status.setText(f"완료: 성공 {success_count}개, 실패 {failed_count}개")
+            failed_count = 0
+            success_count = 0
+        
             self.upload_progress.setValue(100)
     
     def get_crawled_product_data(self, row):
@@ -11590,6 +11593,41 @@ class Main(QMainWindow):
             # UI 상태 복원 (시그널 사용)
             self.restore_ui_signal.emit()
     
+    @safe_slot
+    def update_upload_progress_safe(self, value):
+        """업로드 진행률 업데이트 (안전)"""
+        try:
+            self.upload_progress.setValue(value)
+        except Exception as e:
+            self.log_message(f"❌ 업로드 진행률 업데이트 오류: {str(e)}")
+    
+    @safe_slot
+    def update_upload_status_safe(self, text):
+        """업로드 상태 텍스트 업데이트 (안전)"""
+        try:
+            self.current_upload_status.setText(text)
+        except Exception as e:
+            self.log_message(f"❌ 업로드 상태 업데이트 오류: {str(e)}")
+    
+    @safe_slot
+    def on_upload_finished(self):
+        """업로드 완료 처리 (안전)"""
+        try:
+            self.start_upload_btn.setEnabled(True)
+            self.pause_upload_btn.setEnabled(False)
+            self.stop_upload_btn.setEnabled(False)
+            self.current_upload_status.setText("대기 중")
+            
+            # 업로드 진행률 위젯 숨기기
+            if hasattr(self, 'upload_progress_widget'):
+                self.upload_progress_widget.hide()
+            
+            # 다른 탭 활성화
+            self.set_tabs_enabled(True)
+            
+        except Exception as e:
+            self.log_message(f"❌ 업로드 완료 처리 오류: {str(e)}")
+
     def restore_favorite_analysis_ui(self):
         """주력상품 분석 UI 상태 복원"""
         try:
