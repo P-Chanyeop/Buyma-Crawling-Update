@@ -5587,7 +5587,7 @@ class Main(QMainWindow):
                     )
                     
                     # BUYMA에서 해당 상품 검색하여 최저가 찾기
-                    lowest_price = self.search_buyma_lowest_price(product_name)
+                    lowest_price = self.search_buyma_lowest_price(product_name, brand_name=product.get('brand', None))
                     
                     if lowest_price:
                         # 제안가 계산 (최저가 - 할인금액)
@@ -6013,13 +6013,15 @@ class Main(QMainWindow):
                     self.log_message(f"🔍 분석 중: {product_name[:30]}...")
                     
                     # BUYMA에서 해당 상품 검색하여 최저가 찾기
-                    self.price_table.setItem(row, 5, QTableWidgetItem("🔍 최저가 검색 중..."))
+                    QTimer.singleShot(0, lambda r=row: self.update_table_cell_safe(r, 5, "🔍 최저가 검색 중..."))
                     
-                    lowest_price = self.search_buyma_lowest_price(product_name)
+                    # 브랜드 정보 가져오기
+                    brand_name = ""
+                    lowest_price = self.search_buyma_lowest_price(product_name, brand_name=brand_name)
                     
                     if lowest_price:
                         # 최저가 검색 성공 상태 표시
-                        self.price_table.setItem(row, 5, QTableWidgetItem("✅ 최저가 불러오기 성공"))
+                        QTimer.singleShot(0, lambda r=row: self.update_table_cell_safe(r, 5, "✅ 최저가 불러오기 성공"))
                         
                         # 제안가 계산 (최저가 - 할인금액)
                         suggested_price = max(lowest_price - discount, 0)
@@ -6034,9 +6036,9 @@ class Main(QMainWindow):
                         # 음수: 내 가격이 최저가보다 낮음 (저렴함)
                         price_difference = current_price - lowest_price if current_price > 0 else 0
                         
-                        # 테이블 업데이트
-                        self.price_table.setItem(row, 2, QTableWidgetItem(f"¥{lowest_price:,}"))
-                        self.price_table.setItem(row, 3, QTableWidgetItem(f"¥{suggested_price:,}"))
+                        # 테이블 업데이트를 시그널로 처리
+                        QTimer.singleShot(0, lambda r=row, lp=lowest_price: self.update_table_cell_safe(r, 2, f"¥{lp:,}"))
+                        QTimer.singleShot(10, lambda r=row, sp=suggested_price: self.update_table_cell_safe(r, 3, f"¥{sp:,}"))
                         
                         # 마진을 가격 차이로 표시
                         if price_difference > 0:
@@ -6046,23 +6048,23 @@ class Main(QMainWindow):
                         else:
                             margin_text = "¥0 (동일)"
                         
-                        self.price_table.setItem(row, 4, QTableWidgetItem(margin_text))
+                        QTimer.singleShot(20, lambda r=row, mt=margin_text: self.update_table_cell_safe(r, 4, mt))
                         
                         # 가격 수정 필요 상태로 변경
                         # 제안가와 현재가의 차이가 최소 마진 이상이면 수정 권장
                         suggested_difference = suggested_price - current_price
                         if suggested_difference >= -abs(min_margin):  # -500엔 이상이면 OK
-                            self.price_table.setItem(row, 5, QTableWidgetItem("💰 가격 수정 필요"))
-                            self.log_message(f"✅ {product_name[:20]}... - 최저가: ¥{lowest_price:,}, 제안가: ¥{suggested_price:,}, 차이: {margin_text}")
+                            QTimer.singleShot(30, lambda r=row: self.update_table_cell_safe(r, 5, "💰 가격 수정 필요"))
+                            self.my_products_log_signal.emit(f"✅ {product_name[:20]}... - 최저가: ¥{lowest_price:,}, 제안가: ¥{suggested_price:,}, 차이: {margin_text}")
                         else:
                             status = f"⚠️ 손실 예상 ({suggested_difference:+,}엔)"
-                            self.price_table.setItem(row, 5, QTableWidgetItem(status))
-                            self.log_message(f"⚠️ 손실 예상: {product_name[:20]}... - 제안가 차이: {suggested_difference:+,}엔")
+                            QTimer.singleShot(30, lambda r=row, s=status: self.update_table_cell_safe(r, 5, s))
+                            self.my_products_log_signal.emit(f"⚠️ 손실 예상: {product_name[:20]}... - 제안가 차이: {suggested_difference:+,}엔")
                         
                     else:
-                        self.price_table.setItem(row, 2, QTableWidgetItem("검색 실패"))
-                        self.price_table.setItem(row, 5, QTableWidgetItem("❌ 최저가 검색 실패"))
-                        self.log_message(f"⚠️ {product_name[:20]}... - 최저가 검색 실패")
+                        QTimer.singleShot(0, lambda r=row: self.update_table_cell_safe(r, 2, "검색 실패"))
+                        QTimer.singleShot(10, lambda r=row: self.update_table_cell_safe(r, 5, "❌ 최저가 검색 실패"))
+                        self.my_products_log_signal.emit(f"⚠️ {product_name[:20]}... - 최저가 검색 실패")
                     
                     # 딜레이
                     time.sleep(2)
@@ -6514,7 +6516,7 @@ class Main(QMainWindow):
                     self.price_analysis_table_update_signal.emit(local_row, 5, "🔍 최저가 검색 중...")
                     
                     # BUYMA에서 최저가 검색
-                    lowest_price = self.search_buyma_lowest_price(product_name)
+                    lowest_price = self.search_buyma_lowest_price(product_name, product.get('brand', ''))
                     
                     if lowest_price:
                         # 최저가 검색 성공
@@ -6727,7 +6729,7 @@ class Main(QMainWindow):
             self.price_table.setItem(row, 5, QTableWidgetItem("❌ 수정 실패"))
             self.log_message(f"❌ 단일 가격 수정 오류: {str(e)}")
 
-    def search_buyma_lowest_price(self, product_name):
+    def search_buyma_lowest_price(self, product_name, brand_name=""):
         """BUYMA에서 상품 검색하여 최저가 찾기"""
         try:
             # 1. 상품명에서 실제 검색어 추출 (商品ID 이전까지)
@@ -6737,6 +6739,9 @@ class Main(QMainWindow):
             
             # 추가 정리 (줄바꿈, 특수문자 제거)
             search_name = search_name.replace("\n", " ").replace("★", "").strip()
+            
+            # 브랜드명 정리
+            search_name = search_name.replace(brand_name, "").strip()
             
             self.log_message(f"🔍 검색어: '{search_name}'")
             
@@ -6749,10 +6754,12 @@ class Main(QMainWindow):
             lowest_price = float('inf')
             found_products = 0
             
+            current_url = ""
+            already_visited_urls = ""
             while True:
-                search_url = f"https://www.buyma.com/r/-R120/{search_name}_{page_number}"
+                search_url = f"https://www.buyma.com/r/-R120/{search_name}_{page_number}/"
                 self.log_message(f"🌐 페이지 {page_number} 접속: {search_url}")
-                
+                            
                 try:
                     self.shared_driver.get(search_url)
                     time.sleep(3)
@@ -6761,10 +6768,32 @@ class Main(QMainWindow):
                     self.log_message(f"⏱️ 페이지 {page_number} 로딩 실패: {str(e)}")
                     break
                 
+                current_url = self.shared_driver.current_url
+                
+                if current_url == already_visited_urls:
+                    self.log_message(f"🔄 동일한 페이지 URL 감지, 중복 방문 감지로 인해 다음 상품으로 넘어갑니다.")
+                    break
+                
+                else:
+                    already_visited_urls = ""
+                
                 # 3. ul.product_lists 요소 로딩 대기
                 from selenium.webdriver.common.by import By
                 from selenium.webdriver.support.ui import WebDriverWait
                 from selenium.webdriver.support import expected_conditions as EC
+                
+                # 상품이 없는 경우 처리
+                try:
+                    self.shared_driver.implicitly_wait(1)
+                    no_product_elem = self.shared_driver.find_element(By.CSS_SELECTOR, "a.search_requestlink_btn")
+                    if no_product_elem:
+                        self.log_message(f"⚠️ 페이지 {page_number}: '{search_name}' 상품이 없습니다.")
+                        break
+                except:
+                    pass  # no_product_elem이 없으면 계속 진행
+                
+                finally:
+                    self.shared_driver.implicitly_wait(10)  # 기본 대기 시간 복원
                 
                 try:
                     # 상품 리스트 로딩 대기 (최대 10초)
@@ -6820,6 +6849,7 @@ class Main(QMainWindow):
                     if len(product_items) >= 120:
                         page_number += 1
                         self.log_message(f"➡️ 다음 페이지({page_number})로 이동...")
+                        already_visited_urls = current_url
                         time.sleep(2)  # 페이지 간 딜레이
                     else:
                         # 마지막 페이지 도달
@@ -6888,7 +6918,7 @@ class Main(QMainWindow):
             import threading
             
             def analyze():
-                lowest_price = self.search_buyma_lowest_price(product_name)
+                lowest_price = self.search_buyma_lowest_price(product_name, brand_name="")
                 if lowest_price:
                     discount = self.discount_amount.value()
                     suggested_price = max(lowest_price - discount, 0)
@@ -11013,7 +11043,7 @@ class Main(QMainWindow):
                     self.log_message(f"📊 분석 중: {product_name} ({i+1}/{len(self.favorite_products)})")
                     
                     # 실제 BUYMA 최저가 조회 (get_buyma_lowest_price_for_favorite 사용)
-                    lowest_price = self.get_buyma_lowest_price_for_favorite(product_name)
+                    lowest_price = self.get_buyma_lowest_price_for_favorite(product_name, product.get('brand', ''))
                     
                     if lowest_price and lowest_price > 0:
                         # 제안가 계산 (최저가 - 할인금액)
@@ -11428,7 +11458,7 @@ class Main(QMainWindow):
                     )
                     
                     # 가격관리 탭의 가격확인 로직 활용
-                    competitor_price = self.get_buyma_lowest_price_for_favorite(product_name)
+                    competitor_price = self.get_buyma_lowest_price_for_favorite(product_name, brand_name=product.get('brand', ''))
                     
                     if competitor_price > 0:
                         # 현재가와 최저가 비교
@@ -11638,7 +11668,7 @@ class Main(QMainWindow):
         except Exception as e:
             self.log_message(f"UI 복원 오류: {str(e)}")
     
-    def get_buyma_lowest_price_for_favorite(self, product_name):
+    def get_buyma_lowest_price_for_favorite(self, product_name, brand_name):
         """주력상품용 BUYMA 최저가 조회 (search_buyma_lowest_price 로직 활용)"""
         try:
             # 1. 상품명에서 실제 검색어 추출 (商品ID 이전까지)
@@ -11648,6 +11678,9 @@ class Main(QMainWindow):
             
             # 추가 정리 (줄바꿈, 특수문자 제거)
             search_name = search_name.replace("\n", " ").replace("★", "").strip()
+            
+            # 브랜드명 제거 
+            search_name = search_name.replace(brand_name, "").strip()
             
             self.log_message(f"🔍 주력상품 검색어: '{search_name}'")
             
@@ -13553,7 +13586,7 @@ class Main(QMainWindow):
                     )
                     
                     # BUYMA에서 해당 상품 검색하여 최저가 찾기
-                    lowest_price = self.search_buyma_lowest_price(product_name)
+                    lowest_price = self.search_buyma_lowest_price(product_name, brand_name="")
                     
                     if lowest_price:
                         # 제안가 계산 (최저가 - 할인금액)
@@ -13610,6 +13643,11 @@ class Main(QMainWindow):
                     
                     # 딜레이 (서버 부하 방지)
                     time.sleep(2)
+                    
+                    # 10개마다 중간 저장
+                    if (row + 1) % 10 == 0 and analysis_results:
+                        self.my_products_log_signal.emit(f"💾 가격 분석 결과 중간 저장 중... ({row + 1}개 완료)")
+                        QTimer.singleShot(0, lambda results=analysis_results.copy(): self.update_products_json_with_analysis(results))
                     
                 except Exception as e:
                     self.my_products_log_signal.emit(f"❌ 상품 분석 오류 (행 {row}): {str(e)}")
