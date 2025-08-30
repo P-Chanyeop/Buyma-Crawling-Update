@@ -1,0 +1,12 @@
+크래시 리포트 - 2025-08-30 14:35:26.184312
+============================================================
+예외 타입: AttributeError
+예외 메시지: 'Main' object has no attribute 'display_current_page_products'
+============================================================
+상세 스택 트레이스:
+Traceback (most recent call last):
+  File "C:\Users\IRENE_XD\Documents\카카오톡 받은 파일\buyma\buyma.py", line 6030, in <lambda>
+    QTimer.singleShot(0, lambda p=page_num: self.display_current_page_products(p))
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Main' object has no attribute 'display_current_page_products'
+============================================================
