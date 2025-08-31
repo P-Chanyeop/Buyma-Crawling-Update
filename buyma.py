@@ -653,6 +653,7 @@ class Main(QMainWindow):
     # 진행률 업데이트 시그널 추가
     progress_update_signal = pyqtSignal(int, int, str)        # current, total, message
     progress_hide_signal = pyqtSignal()                       # 진행률 위젯 숨기기
+    ui_enable_signal = pyqtSignal(bool)                       # UI 활성화/비활성화
     
     # 대시보드 업데이트 시그널 추가
     dashboard_step_signal = pyqtSignal(str, str)             # step_text, color
@@ -723,6 +724,7 @@ class Main(QMainWindow):
         # 진행률 업데이트 시그널 연결
         self.progress_update_signal.connect(self.update_progress_safe)
         self.progress_hide_signal.connect(self.hide_price_progress_widget)
+        self.ui_enable_signal.connect(self.set_tabs_enabled)
         
         # 가격 분석 시그널 연결
         self.price_analysis_log_signal.connect(self.log_message)
@@ -11780,17 +11782,15 @@ class Main(QMainWindow):
             # 진행률 100% 완료 후 종료 - 시그널 사용
             self.progress_update_signal.emit(len(self.favorite_products)*2, len(self.favorite_products)*2, "✅ 통합 처리 완료")
             
-            # 1초 후 위젯 숨기기
-            import threading
-            def hide_after_delay():
+            # 1초 후 위젯 숨기기, 1.2초 후 UI 활성화
+            def delayed_actions():
                 import time
                 time.sleep(1)
                 self.progress_hide_signal.emit()
+                time.sleep(0.2)
+                self.ui_enable_signal.emit(True)
             
-            threading.Thread(target=hide_after_delay, daemon=True).start()
-            
-            # UI 제어 해제
-            QTimer.singleShot(1200, lambda: self.set_tabs_enabled(True))
+            threading.Thread(target=delayed_actions, daemon=True).start()
             
         except Exception as e:
             self.my_products_log_signal.emit(f"❌ 주력상품 통합 처리 오류: {str(e)}")
