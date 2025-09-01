@@ -4,7 +4,7 @@
   "browser": "Chrome",
   "timeout": 5,
   "retry_count": 3,
-  "crawl_count": 50,
+  "crawl_count": 10,
   "delay_time": 3,
   "discount_amount": 100,
   "min_margin": 500,
