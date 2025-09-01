@@ -6444,7 +6444,7 @@ class Main(QMainWindow):
                     background-color: #155724;
                 }
             """)
-            confirm_btn.clicked.connect(lambda: dialog.done(1))  # 확인 = 1
+            confirm_btn.clicked.connect(lambda checked: dialog.done(1))  # 확인 = 1
             
             cancel_btn = QPushButton("❌ 취소")
             cancel_btn.setStyleSheet("""
@@ -6465,7 +6465,7 @@ class Main(QMainWindow):
                     background-color: #a71e2a;
                 }
             """)
-            cancel_btn.clicked.connect(lambda: dialog.done(0))  # 취소 = 0
+            cancel_btn.clicked.connect(lambda checked: dialog.done(0))  # 취소 = 0
             
             button_layout.addWidget(cancel_btn)
             button_layout.addWidget(confirm_btn)

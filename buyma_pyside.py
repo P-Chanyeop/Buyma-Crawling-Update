@@ -6442,7 +6442,7 @@ class Main(QMainWindow):
                     background-color: #155724;
                 }
             """)
-            confirm_btn.clicked.connect(lambda: dialog.done(1))  # 확인 = 1
+            confirm_btn.clicked.connect(lambda checked: dialog.done(1))  # 확인 = 1
             
             cancel_btn = QPushButton("❌ 취소")
             cancel_btn.setStyleSheet("""
@@ -6463,7 +6463,7 @@ class Main(QMainWindow):
                     background-color: #a71e2a;
                 }
             """)
-            cancel_btn.clicked.connect(lambda: dialog.done(0))  # 취소 = 0
+            cancel_btn.clicked.connect(lambda checked: dialog.done(0))  # 취소 = 0
             
             button_layout.addWidget(cancel_btn)
             button_layout.addWidget(confirm_btn)
@@ -13755,7 +13755,7 @@ https://www.buyma.com/contents/safety/anshin.html
             """)
             
             # 기존 함수 활용하여 버튼 클릭 이벤트 연결
-            add_favorite_btn.clicked.connect(lambda: self.add_to_favorite_from_price_table(row))
+            add_favorite_btn.clicked.connect(lambda checked: self.add_to_favorite_from_price_table(row))
             
             action_layout.addWidget(add_favorite_btn)
             action_layout.addStretch()  # 왼쪽 정렬
@@ -13916,7 +13916,7 @@ https://www.buyma.com/contents/safety/anshin.html
             """)
             
             # 기존 함수 활용하여 버튼 클릭 이벤트 연결
-            add_favorite_btn.clicked.connect(lambda: self.add_to_favorite_from_price_table(row))
+            add_favorite_btn.clicked.connect(lambda checked: self.add_to_favorite_from_price_table(row))
             
             action_layout.addWidget(add_favorite_btn)
             action_layout.addStretch()  # 왼쪽 정렬
