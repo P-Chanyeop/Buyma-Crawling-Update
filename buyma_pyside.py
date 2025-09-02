@@ -5357,8 +5357,8 @@ class Main(QMainWindow):
         time.sleep(1)
         
         # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
-        self.switch_to_monitoring_tab()
-        self.set_tabs_enabled(False)
+        # self.switch_to_monitoring_tab()
+        # self.set_tabs_enabled(False)
         
         # 가격분석 진행률 위젯 표시
         self.price_progress_widget.show()
@@ -5973,8 +5973,8 @@ class Main(QMainWindow):
         
         try:
             # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
-            self.switch_to_monitoring_tab()
-            self.set_tabs_enabled(False)
+            # self.switch_to_monitoring_tab()
+            # self.set_tabs_enabled(False)
             
             # 가격분석 진행률 위젯 표시
             self.price_progress_widget.show()
@@ -6082,12 +6082,12 @@ class Main(QMainWindow):
             ))
             
             # UI 제어 해제
-            QTimer.singleShot(0, lambda: self.set_tabs_enabled(True))
+            # QTimer.singleShot(0, lambda: self.set_tabs_enabled(True))
             
         except Exception as e:
             self.my_products_log_signal.emit(f"❌ 페이지별 순차 처리 오류: {str(e)}")
             # 오류 시 UI 제어 해제
-            QTimer.singleShot(0, lambda: self.set_tabs_enabled(True))
+            # QTimer.singleShot(0, lambda: self.set_tabs_enabled(True))
     
     def extract_product_id(self, product_name):
         """상품명에서 상품ID 추출"""
@@ -7055,8 +7055,8 @@ class Main(QMainWindow):
             return
         
         # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
-        self.switch_to_monitoring_tab()
-        self.set_tabs_enabled(False)
+        # self.switch_to_monitoring_tab()
+        # self.set_tabs_enabled(False)
         
         self.log_message("🚀 내 상품 전체 분석 & 수정을 시작합니다...")
         
@@ -9327,8 +9327,8 @@ class Main(QMainWindow):
             self.upload_table.setRowCount(0)
             
             # 5. UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
-            self.switch_to_monitoring_tab()
-            self.set_tabs_enabled(False)
+            # self.switch_to_monitoring_tab()
+            # self.set_tabs_enabled(False)
             
             # 6. 별도 스레드에서 업로드 실행
             import threading
@@ -10936,8 +10936,8 @@ class Main(QMainWindow):
                 return
             
             # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
-            self.switch_to_monitoring_tab()
-            self.set_tabs_enabled(False)
+            # self.switch_to_monitoring_tab()
+            # self.set_tabs_enabled(False)
             
             # UI 상태 변경
             self.fav_start_analysis_btn.setEnabled(False)
@@ -11180,8 +11180,8 @@ class Main(QMainWindow):
                 return
             
             # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
-            self.switch_to_monitoring_tab()
-            self.set_tabs_enabled(False)
+            # self.switch_to_monitoring_tab()
+            # self.set_tabs_enabled(False)
             
             self.log_message(f"🔍 주력상품 가격확인 시작: {len(self.favorite_products)}개")
             
@@ -11268,7 +11268,7 @@ class Main(QMainWindow):
             )
             
             # UI 제어 해제
-            self.set_tabs_enabled(True)
+            # self.set_tabs_enabled(True)
             
             self.log_message("🔍 주력상품 가격확인 완료")
             
@@ -11277,7 +11277,7 @@ class Main(QMainWindow):
             # 오류 시 진행률 위젯에 오류 표시
             self.progress_widget.set_task_error("주력상품 가격확인 오류", str(e))
             # UI 제어 해제
-            self.set_tabs_enabled(True)
+            # self.set_tabs_enabled(True)
             QMessageBox.critical(self, "오류", f"가격확인 중 오류가 발생했습니다:\n{str(e)}")
     
     @safe_slot
@@ -11301,8 +11301,8 @@ class Main(QMainWindow):
                 return
             
             # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
-            self.switch_to_monitoring_tab()
-            self.set_tabs_enabled(False)
+            # self.switch_to_monitoring_tab()
+            # self.set_tabs_enabled(False)
             
             self.log_message(f"🔄 주력상품 가격수정 시작: {len(need_update)}개")
             
@@ -11378,7 +11378,7 @@ class Main(QMainWindow):
             )
             
             # UI 상태 복원 (중요!)
-            self.set_tabs_enabled(True)
+            # self.set_tabs_enabled(True)
             
             self.log_message(f"🔄 주력상품 가격수정 완료: {updated_count}개 수정")
             QMessageBox.information(self, "수정 완료", f"{updated_count}개 상품의 가격이 수정되었습니다.")
@@ -11388,7 +11388,7 @@ class Main(QMainWindow):
             # 오류 시 진행률 위젯에 오류 표시
             self.progress_widget.set_task_error("주력상품 가격수정 오류", str(e))
             # UI 상태 복원 (오류 시에도 필수!)
-            self.set_tabs_enabled(True)
+            # self.set_tabs_enabled(True)
             QMessageBox.critical(self, "오류", f"가격수정 중 오류가 발생했습니다:\n{str(e)}")
     
     def get_competitor_price_simulation(self, product_name):
