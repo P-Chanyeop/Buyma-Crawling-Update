@@ -2207,6 +2207,27 @@ class Main(QMainWindow):
         self.fav_load_products_btn.clicked.connect(self.load_favorite_products)
         first_row_layout.addWidget(self.fav_load_products_btn)
         
+        # 엑셀 불러오기 버튼 추가
+        self.fav_load_excel_btn = QPushButton("📊 엑셀 불러오기")
+        self.fav_load_excel_btn.setMinimumHeight(40)
+        self.fav_load_excel_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e67e22, stop:1 #d35400);
+                color: white;
+                border: none;
+                border-radius: 5px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f39c12, stop:1 #e67e22);
+            }
+        """)
+        self.fav_load_excel_btn.clicked.connect(self.load_favorite_products_from_excel)
+        first_row_layout.addWidget(self.fav_load_excel_btn)
+        
         self.fav_check_prices_btn = QPushButton("🔍 가격확인")
         self.fav_check_prices_btn.setMinimumHeight(40)
         self.fav_check_prices_btn.setStyleSheet("""
@@ -6156,6 +6177,9 @@ class Main(QMainWindow):
             
             for i, product in enumerate(current_page_products):
                 try:
+                    # 진행률 업데이트 (현재 페이지 기준)
+                    self.update_price_progress_widget(i, len(current_page_products), f"페이지 {page_num+1} 분석 중: {i+1}/{len(current_page_products)}")
+                    
                     product_name = product.get('title', '')
                     current_price = product.get('current_price', '0')
                     
@@ -6200,6 +6224,15 @@ class Main(QMainWindow):
                     
                     time.sleep(1)  # 상품 간 딜레이
                     
+                    # 10개마다 테이블 업데이트 (페이지 내에서)
+                    if (i + 1) % 10 == 0:
+                        self.my_products_log_signal.emit(f"💾 페이지 {page_num+1} 테이블 업데이트 중... ({i + 1}개 완료)")
+                        # 분석 결과를 테이블에 즉시 반영
+                        QTimer.singleShot(0, lambda: self.update_price_table_with_current_data())
+                        QTimer.singleShot(100, lambda: self.price_table.viewport().update())
+                        # 마지막 업데이트된 행으로 스크롤
+                        QTimer.singleShot(200, lambda row=i: self.price_table.scrollToItem(self.price_table.item(row, 0)))
+                    
                 except Exception as e:
                     self.my_products_log_signal.emit(f"❌ 상품 분석 오류: {product.get('name', 'Unknown')} - {str(e)}")
                     failed_count += 1
@@ -6211,6 +6244,70 @@ class Main(QMainWindow):
             self.my_products_log_signal.emit(f"❌ 페이지 분석 오류: {str(e)}")
             return 0, 0
     
+    def update_price_table_with_current_data(self):
+        """현재 페이지 데이터로 가격 테이블 업데이트"""
+        try:
+            # 현재 페이지 상품들 가져오기
+            start_idx = self.current_page * self.page_size
+            end_idx = min(start_idx + self.page_size, len(self.all_products))
+            current_page_products = self.all_products[start_idx:end_idx]
+            
+            # 테이블 행 수 설정
+            self.price_table.setRowCount(len(current_page_products))
+            
+            for row, product in enumerate(current_page_products):
+                try:
+                    # 상품명
+                    self.price_table.setItem(row, 0, QTableWidgetItem(product.get('title', '')))
+                    
+                    # 현재가격
+                    self.price_table.setItem(row, 1, QTableWidgetItem(product.get('current_price', '')))
+                    
+                    # 최저가
+                    lowest_price = product.get('lowest_price', 0)
+                    if lowest_price > 0:
+                        self.price_table.setItem(row, 2, QTableWidgetItem(f"¥{lowest_price:,}"))
+                    else:
+                        self.price_table.setItem(row, 2, QTableWidgetItem("분석 중..."))
+                    
+                    # 제안가
+                    suggested_price = product.get('suggested_price', 0)
+                    if suggested_price > 0:
+                        self.price_table.setItem(row, 3, QTableWidgetItem(f"¥{suggested_price:,}"))
+                    else:
+                        self.price_table.setItem(row, 3, QTableWidgetItem("계산 중..."))
+                    
+                    # 가격차이
+                    price_difference = product.get('price_difference', 0)
+                    if price_difference != 0:
+                        if price_difference > 0:
+                            margin_text = f"+ ¥{price_difference:,} (비쌈)"
+                        else:
+                            margin_text = f"- ¥ {abs(price_difference):,} (저렴)"
+                        self.price_table.setItem(row, 4, QTableWidgetItem(margin_text))
+                    else:
+                        self.price_table.setItem(row, 4, QTableWidgetItem("-"))
+                    
+                    # 상태
+                    status = product.get('status', '분석 중...')
+                    status_item = QTableWidgetItem(status)
+                    
+                    # 상태별 색상 설정
+                    if "수정 필요" in status:
+                        status_item.setForeground(QBrush(QColor("#f39c12")))  # 주황색
+                    elif "적정" in status:
+                        status_item.setForeground(QBrush(QColor("#27ae60")))  # 초록색
+                    elif "실패" in status:
+                        status_item.setForeground(QBrush(QColor("#e74c3c")))  # 빨간색
+                    
+                    self.price_table.setItem(row, 5, status_item)
+                    
+                except Exception as e:
+                    continue
+                    
+        except Exception as e:
+            self.log_message(f"❌ 테이블 업데이트 오류: {str(e)}")
+
     def update_current_page_products(self, page_num, is_auto_mode):
         """현재 페이지 상품들의 가격 수정"""
         import time
@@ -10588,6 +10685,110 @@ class Main(QMainWindow):
             self.log_message(f"주력 상품 저장 오류: {str(e)}")
             QMessageBox.critical(self, "오류", f"주력 상품 저장 중 오류가 발생했습니다:\n{str(e)}")
     
+    def load_favorite_products_from_excel(self):
+        """엑셀에서 주력상품 일괄 불러오기"""
+        try:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, 
+                "주력상품 엑셀 파일 선택", 
+                "", 
+                "Excel Files (*.xlsx *.xls);;CSV Files (*.csv)"
+            )
+            
+            if not file_path:
+                return
+            
+            import pandas as pd
+            
+            # 엑셀/CSV 파일 읽기
+            if file_path.endswith('.csv'):
+                df = pd.read_csv(file_path, encoding='utf-8')
+            else:
+                df = pd.read_excel(file_path)
+            
+            # 필수 컬럼 확인
+            required_columns = ['상품명', '상품ID', '현재가격']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            
+            if missing_columns:
+                QMessageBox.warning(
+                    self, 
+                    "컬럼 오류", 
+                    f"필수 컬럼이 없습니다: {', '.join(missing_columns)}\n\n"
+                    f"필요한 컬럼: 상품명, 상품ID, 현재가격"
+                )
+                return
+            
+            # 데이터 처리
+            added_count = 0
+            duplicate_count = 0
+            error_count = 0
+            
+            for index, row in df.iterrows():
+                try:
+                    product_name = str(row['상품명']).strip()
+                    product_id = str(row['상품ID']).strip()
+                    current_price = str(row['현재가격']).replace(',', '').strip()
+                    
+                    # 빈 값 체크
+                    if not product_name or not product_id or not current_price:
+                        error_count += 1
+                        continue
+                    
+                    # 가격 숫자 변환 체크
+                    try:
+                        price_num = int(current_price)
+                    except:
+                        error_count += 1
+                        continue
+                    
+                    # 중복 체크
+                    if any(p.get('name') == product_name for p in self.favorite_products):
+                        duplicate_count += 1
+                        continue
+                    
+                    # 주력상품 데이터 생성 (기본값 설정)
+                    favorite_product = {
+                        'name': product_name,
+                        'product_id': product_id,
+                        'current_price': f"¥{price_num:,}",
+                        'lowest_price': 0,
+                        'suggested_price': 0,
+                        'price_difference': 0,
+                        'status': '분석 필요',
+                        'last_checked': '',
+                        'needs_update': False,
+                        'url': f"https://www.buyma.com/item/{product_id}/"
+                    }
+                    
+                    self.favorite_products.append(favorite_product)
+                    added_count += 1
+                    
+                except Exception as e:
+                    error_count += 1
+                    continue
+            
+            # 테이블 업데이트
+            self.update_favorite_table()
+            self.update_favorite_stats()
+            self.save_favorite_products_auto()
+            
+            # 결과 메시지
+            result_msg = f"엑셀 불러오기 완료!\n\n"
+            result_msg += f"✅ 추가됨: {added_count}개\n"
+            if duplicate_count > 0:
+                result_msg += f"⚠️ 중복 제외: {duplicate_count}개\n"
+            if error_count > 0:
+                result_msg += f"❌ 오류: {error_count}개\n"
+            result_msg += f"\n바로 가격확인을 시작할 수 있습니다."
+            
+            QMessageBox.information(self, "불러오기 완료", result_msg)
+            self.log_message(f"📊 엑셀에서 주력상품 {added_count}개 추가 완료")
+            
+        except Exception as e:
+            self.log_message(f"❌ 엑셀 불러오기 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"엑셀 파일 불러오기 중 오류가 발생했습니다:\n{str(e)}")
+
     def load_favorite_products(self):
         """주력 상품 목록 불러오기"""
         try:
@@ -14034,6 +14235,9 @@ https://www.buyma.com/contents/safety/anshin.html
             # 각 상품별 가격분석 실행
             for row in range(total_rows):
                 try:
+                    # 진행률 업데이트
+                    progress = int((row / total_rows) * 100)
+                    self.update_price_progress_widget(row, total_rows, f"분석 중: {row+1}/{total_rows}")
                     
                     # 테이블에서 상품 정보 가져오기
                     product_name_item = self.price_table.item(row, 0)
@@ -14113,10 +14317,12 @@ https://www.buyma.com/contents/safety/anshin.html
                     # 딜레이 (서버 부하 방지)
                     time.sleep(2)
                     
-                    # 10개마다 중간 저장
+                    # 10개마다 중간 저장 및 테이블 업데이트
                     if (row + 1) % 10 == 0 and analysis_results:
-                        self.my_products_log_signal.emit(f"💾 가격 분석 결과 중간 저장 중... ({row + 1}개 완료)")
+                        self.my_products_log_signal.emit(f"💾 중간 저장 & 테이블 업데이트 중... ({row + 1}개 완료)")
                         QTimer.singleShot(0, lambda results=analysis_results.copy(): self.update_products_json_with_analysis(results))
+                        # 테이블 강제 업데이트
+                        QTimer.singleShot(100, lambda: self.price_table.viewport().update())
                     
                 except Exception as e:
                     self.my_products_log_signal.emit(f"❌ 상품 분석 오류 (행 {row}): {str(e)}")

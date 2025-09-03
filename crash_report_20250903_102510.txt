@@ -1,0 +1,12 @@
+크래시 리포트 - 2025-09-03 10:25:10.701253
+============================================================
+예외 타입: AttributeError
+예외 메시지: 'Main' object has no attribute 'run_price_analysis_existing_data'
+============================================================
+상세 스택 트레이스:
+Traceback (most recent call last):
+  File "C:\Users\user\Documents\카카오톡 받은 파일\buyma\buyma_git\Buyma-Crawling-Update\buyma_pyside.py", line 5397, in <lambda>
+    QTimer.singleShot(0, lambda: self.run_price_analysis_existing_data(discount, min_margin, is_auto_mode))
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Main' object has no attribute 'run_price_analysis_existing_data'
+============================================================
