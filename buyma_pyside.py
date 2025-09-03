@@ -6989,12 +6989,12 @@ class Main(QMainWindow):
             # 추가 정리 (줄바꿈, 특수문자 제거)
             search_name = search_name.replace("\n", " ").replace("★", " ").strip()
             
-            # 숫자가 포함된 단어 제거 후 영어만 남기기
-            import re
-            # 1단계: 숫자가 포함된 단어 전체 제거 (M0455, A1234, bag123 등)
-            search_name = re.sub(r'\b\w*\d+\w*\b', '', search_name)
-            # 2단계: 영어와 공백만 남기기 (숫자 완전 제거)
-            search_name = re.sub(r'[^a-zA-Z\s]', '', search_name)
+            # # 숫자가 포함된 단어 제거 후 영어만 남기기
+            # import re
+            # # 1단계: 숫자가 포함된 단어 전체 제거 (M0455, A1234, bag123 등)
+            # search_name = re.sub(r'\b\w*\d+\w*\b', '', search_name)
+            # # 2단계: 영어와 공백만 남기기 (숫자 완전 제거)
+            # search_name = re.sub(r'[^a-zA-Z\s]', '', search_name)
             # 3단계: 연속된 공백을 하나로 정리
             search_name = re.sub(r'\s+', ' ', search_name).strip()
             
@@ -7014,8 +7014,8 @@ class Main(QMainWindow):
             
             current_url = ""
             already_visited_urls = ""
-            max_page = 20  # 최대 20페이지까지만 검색
-            while page_number <= max_page:
+            max_pages = 1  # 최대 20페이지까지만 검색
+            while page_number <= max_pages:
                 
                 if search_name == "":
                     self.log_message("⚠️ 유효한 검색어가 없습니다.")
@@ -12082,13 +12082,13 @@ class Main(QMainWindow):
             search_name = search_name.replace("\n", " ").replace("★", " ").strip()
             
             # 숫자가 포함된 단어 제거 후 영어만 남기기
-            import re
-            # 1단계: 숫자가 포함된 단어 전체 제거 (M0455, A1234, bag123 등)
-            search_name = re.sub(r'\b\w*\d+\w*\b', '', search_name)
-            # 2단계: 영어와 공백만 남기기 (숫자 완전 제거)
-            search_name = re.sub(r'[^a-zA-Z\s]', '', search_name)
-            # 3단계: 연속된 공백을 하나로 정리
-            search_name = re.sub(r'\s+', ' ', search_name).strip()
+            # import re
+            # # 1단계: 숫자가 포함된 단어 전체 제거 (M0455, A1234, bag123 등)
+            # search_name = re.sub(r'\b\w*\d+\w*\b', '', search_name)
+            # # 2단계: 영어와 공백만 남기기 (숫자 완전 제거)
+            # search_name = re.sub(r'[^a-zA-Z\s]', '', search_name)
+            # # 3단계: 연속된 공백을 하나로 정리
+            # search_name = re.sub(r'\s+', ' ', search_name).strip()
             
             # 브랜드명 정리
             # search_name = search_name.replace(brand_name, "").strip()
@@ -12111,7 +12111,7 @@ class Main(QMainWindow):
             
             current_url = ""
             already_visited_urls = ""
-            max_pages = 20  # 최대 20페이지까지 검색
+            max_pages = 1  # 최대 20페이지까지 검색
             while page_number <= max_pages:
                 
                 if search_name == "":
