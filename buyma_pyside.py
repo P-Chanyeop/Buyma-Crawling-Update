@@ -7136,28 +7136,27 @@ class Main(QMainWindow):
                             name_elem = item.find_element(By.CSS_SELECTOR, "div.product_name")
                             item_name = name_elem.text.strip()
                             
-                            # 7. 검색한 상품명이 포함되어 있는지 확인
-                            if search_name.lower() in item_name.lower():
-                                # 5. 상품가격 추출 (span.Price_Txt)
-                                try:
-                                    price_elem = item.find_element(By.CSS_SELECTOR, "span.Price_Txt")
-                                    price_text = price_elem.text.strip()
+                            # 7. 상품명 검사 없이 모든 상품의 가격 확인
+                            # 5. 상품가격 추출 (span.Price_Txt)
+                            try:
+                                price_elem = item.find_element(By.CSS_SELECTOR, "span.Price_Txt")
+                                price_text = price_elem.text.strip()
+                                
+                                # 가격에서 숫자만 추출 (¥12,000 → 12000)
+                                price_numbers = re.findall(r'[\d,]+', price_text)
+                                if price_numbers:
+                                    price = int(price_numbers[0].replace(',', ''))
                                     
-                                    # 가격에서 숫자만 추출 (¥12,000 → 12000)
-                                    price_numbers = re.findall(r'[\d,]+', price_text)
-                                    if price_numbers:
-                                        price = int(price_numbers[0].replace(',', ''))
-                                        
-                                        # 7. 최저가 비교 및 갱신
-                                        if price < lowest_price:
-                                            lowest_price = price
-                                            self.log_message(f"💰 새로운 최저가 발견: ¥{price:,} - {item_name[:30]}...")
-                                        
-                                        found_products += 1
+                                    # 7. 최저가 비교 및 갱신
+                                    if price < lowest_price:
+                                        lowest_price = price
+                                        self.log_message(f"💰 새로운 최저가 발견: ¥{price:,} - {item_name[:30]}...")
                                     
-                                except Exception as e:
-                                    # 가격 정보가 없는 상품은 건너뛰기
-                                    continue
+                                    found_products += 1
+                                
+                            except Exception as e:
+                                # 가격 정보가 없는 상품은 건너뛰기
+                                continue
                             
                         except Exception as e:
                             # 개별 상품 처리 오류는 건너뛰기
@@ -12246,28 +12245,27 @@ class Main(QMainWindow):
                             name_elem = item.find_element(By.CSS_SELECTOR, "div.product_name")
                             item_name = name_elem.text.strip()
                             
-                            # 7. 검색한 상품명이 포함되어 있는지 확인
-                            if search_name.lower() in item_name.lower():
-                                # 8. 상품가격 추출 (span.Price_Txt)
-                                try:
-                                    price_elem = item.find_element(By.CSS_SELECTOR, "span.Price_Txt")
-                                    price_text = price_elem.text.strip()
+                            # 7. 상품명 검사 없이 모든 상품의 가격 확인
+                            # 8. 상품가격 추출 (span.Price_Txt)
+                            try:
+                                price_elem = item.find_element(By.CSS_SELECTOR, "span.Price_Txt")
+                                price_text = price_elem.text.strip()
+                                
+                                # 가격에서 숫자만 추출 (¥12,000 → 12000)
+                                price_numbers = re.findall(r'[\d,]+', price_text)
+                                if price_numbers:
+                                    price = int(price_numbers[0].replace(',', ''))
                                     
-                                    # 가격에서 숫자만 추출 (¥12,000 → 12000)
-                                    price_numbers = re.findall(r'[\d,]+', price_text)
-                                    if price_numbers:
-                                        price = int(price_numbers[0].replace(',', ''))
-                                        
-                                        # 9. 최저가 비교 및 갱신
-                                        if price < lowest_price:
-                                            lowest_price = price
-                                            self.log_message(f"💰 새로운 최저가 발견: ¥{price:,} - {item_name[:30]}...")
-                                        
-                                        found_products += 1
+                                    # 9. 최저가 비교 및 갱신
+                                    if price < lowest_price:
+                                        lowest_price = price
+                                        self.log_message(f"💰 새로운 최저가 발견: ¥{price:,} - {item_name[:30]}...")
                                     
-                                except Exception as e:
-                                    # 가격 정보가 없는 상품은 건너뛰기
-                                    continue
+                                    found_products += 1
+                                
+                            except Exception as e:
+                                # 가격 정보가 없는 상품은 건너뛰기
+                                continue
                             
                         except Exception as e:
                             # 개별 상품 처리 오류는 건너뛰기
