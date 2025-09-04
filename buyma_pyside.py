@@ -13,8 +13,8 @@ import psutil
 import requests
 import threading
 import random
-import re
 import time
+import re
 from datetime import datetime
 import time 
 
@@ -3329,7 +3329,6 @@ class Main(QMainWindow):
                 current_price_text = self.upload_table.item(row, 2).text()
                 
                 # 가격에서 숫자 추출
-                import re
                 price_numbers = re.findall(r'[\d,]+', current_price_text)
                 current_price = int(price_numbers[0].replace(',', '')) if price_numbers else 15000
                 
@@ -6046,12 +6045,71 @@ class Main(QMainWindow):
         #     # 오류 시 UI 제어 해제
         #     self.set_tabs_enabled(True)
     
+    def create_excel_file_for_analysis(self):
+        """가격분석 시작 시 엑셀 파일 생성"""
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            self.current_excel_file = f"가격분석결과_{timestamp}.xlsx"
+            
+            # 엑셀 파일 헤더만 생성
+            import pandas as pd
+            df_header = pd.DataFrame(columns=[
+                '페이지', '상품명', '현재가격', '최저가', '제안가', '가격차이', '상태', '처리시간'
+            ])
+            df_header.to_excel(self.current_excel_file, index=False)
+            
+            self.my_products_log_signal.emit(f"📊 엑셀 파일 생성: {self.current_excel_file}")
+            
+        except Exception as e:
+            self.my_products_log_signal.emit(f"❌ 엑셀 파일 생성 오류: {str(e)}")
+
+    def append_page_results_to_excel(self, page_num):
+        """페이지별 결과를 엑셀 파일에 추가"""
+        try:
+            if not hasattr(self, 'current_excel_file'):
+                return
+                
+            # 현재 페이지 상품들 가져오기
+            start_idx = (page_num - 1) * self.page_size
+            end_idx = min(start_idx + self.page_size, len(self.all_products))
+            current_page_products = self.all_products[start_idx:end_idx]
+            
+            # 데이터 준비
+            page_data = []
+            for product in current_page_products:
+                page_data.append({
+                    '페이지': page_num,
+                    '상품명': product.get('title', ''),
+                    '현재가격': product.get('current_price', ''),
+                    '최저가': f"¥{product.get('lowest_price', 0):,}" if product.get('lowest_price', 0) > 0 else '-',
+                    '제안가': f"¥{product.get('suggested_price', 0):,}" if product.get('suggested_price', 0) > 0 else '-',
+                    '가격차이': f"{product.get('price_difference', 0):+,}엔" if product.get('price_difference', 0) != 0 else '-',
+                    '상태': product.get('status', ''),
+                    '처리시간': datetime.now().strftime('%H:%M:%S')
+                })
+            
+            # 기존 엑셀 파일에 추가
+            import pandas as pd
+            existing_df = pd.read_excel(self.current_excel_file)
+            new_df = pd.DataFrame(page_data)
+            combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+            combined_df.to_excel(self.current_excel_file, index=False)
+            
+            self.my_products_log_signal.emit(f"📊 페이지 {page_num} 결과를 엑셀에 추가: {len(page_data)}개 상품")
+            
+        except Exception as e:
+            self.my_products_log_signal.emit(f"❌ 엑셀 추가 오류: {str(e)}")
+
     def analyze_all_pages_sequentially(self, discount, min_margin, is_auto_mode):
         """페이지별 순차 처리: 각 페이지마다 가격분석 → 가격수정"""
         try:
             total_analyzed = 0
             total_updated = 0
             total_failed = 0
+            
+            # 엑셀 파일 생성
+            self.create_excel_file_for_analysis()
             
             self.my_products_log_signal.emit(f"🚀 페이지별 순차 처리 시작 (총 {self.total_pages}페이지)")
             self.my_products_log_signal.emit(f"🔧 설정: 할인 {discount}엔, 최소마진 {min_margin}엔, 모드: {'🤖 자동' if is_auto_mode else '👤 수동'}")
@@ -6085,6 +6143,9 @@ class Main(QMainWindow):
                     
                     self.my_products_log_signal.emit(f"✅ 페이지 {page_num + 1} 가격 수정 완료: 수정 {page_updated}개")
                     
+                    # 페이지별 처리 완료 시 엑셀에 결과 추가
+                    self.append_page_results_to_excel(page_num + 1)
+                    
                     # 페이지 간 딜레이
                     time.sleep(3)
                     
@@ -6113,7 +6174,6 @@ class Main(QMainWindow):
     def extract_product_id(self, product_name):
         """상품명에서 상품ID 추출"""
         try:
-            import re
             
             # 패턴 1: "商品ID: 12345" 형태
             pattern1 = r'商品ID[:\s]*(\d+)'
@@ -6184,7 +6244,6 @@ class Main(QMainWindow):
                     current_price = product.get('current_price', '0')
                     
                     # 현재가격에서 숫자만 추출
-                    import re
                     current_price_numbers = re.findall(r'[\d,]+', current_price)
                     current_price_int = int(current_price_numbers[0].replace(',', '')) if current_price_numbers else 0
                     
@@ -6408,7 +6467,6 @@ class Main(QMainWindow):
                     table_product_name = self.price_table.item(row, 0).text()
                     if table_product_name == product_name:
                         lowest_price_text = self.price_table.item(row, 2).text()
-                        import re
                         price_numbers = re.findall(r'[\d,]+', lowest_price_text)
                         lowest_price = int(price_numbers[0].replace(',', '')) if price_numbers else 0
                         break
@@ -6775,7 +6833,6 @@ class Main(QMainWindow):
                         suggested_price = max(lowest_price - discount, 0)
                         
                         # 현재가격에서 숫자만 추출
-                        import re
                         current_price_numbers = re.findall(r'[\d,]+', current_price_text)
                         current_price = int(current_price_numbers[0].replace(',', '')) if current_price_numbers else 0
                         
@@ -6883,7 +6940,6 @@ class Main(QMainWindow):
                         if suggested_price_item:
                             suggested_price_text = suggested_price_item.text()
                             # 가격에서 숫자만 추출
-                            import re
                             price_numbers = re.findall(r'[\d,]+', suggested_price_text)
                             suggested_price = int(price_numbers[0].replace(',', '')) if price_numbers else 0
                             
@@ -6947,7 +7003,6 @@ class Main(QMainWindow):
             
             suggested_price_text = suggested_price_item.text()
             # 가격에서 숫자만 추출
-            import re
             price_numbers = re.findall(r'[\d,]+', suggested_price_text)
             suggested_price = int(price_numbers[0].replace(',', '')) if price_numbers else 0
             
@@ -7089,7 +7144,6 @@ class Main(QMainWindow):
                                     price_text = price_elem.text.strip()
                                     
                                     # 가격에서 숫자만 추출 (¥12,000 → 12000)
-                                    import re
                                     price_numbers = re.findall(r'[\d,]+', price_text)
                                     if price_numbers:
                                         price = int(price_numbers[0].replace(',', ''))
@@ -7627,7 +7681,6 @@ class Main(QMainWindow):
             price_text = self.crawling_table.item(row, 2).text()
             
             # 가격에서 숫자만 추출
-            import re
             price_match = re.search(r'[\d,]+', price_text.replace(',', ''))
             price = int(price_match.group()) if price_match else 15000
             
@@ -8445,7 +8498,6 @@ class Main(QMainWindow):
                     price_text = self.find_text_by_selectors(element, price_selectors) or "0"
                     
                     # 가격에서 숫자만 추출
-                    import re
                     price_numbers = re.findall(r'[\d,]+', price_text)
                     price = 0
                     if price_numbers:
@@ -9801,7 +9853,6 @@ class Main(QMainWindow):
         """가격 입력"""
         try:
             # 가격에서 숫자만 추출
-            import re
             price_numbers = re.findall(r'[\d,]+', price_text)
             if not price_numbers:
                 self.log_message("❌ 가격 정보를 찾을 수 없습니다.")
@@ -10383,7 +10434,6 @@ class Main(QMainWindow):
                 price_text = self.crawling_table.item(selected_index, 2).text()
                 
                 # 가격에서 숫자만 추출
-                import re
                 price_numbers = re.findall(r'[\d,]+', price_text)
                 price = int(price_numbers[0].replace(',', '')) if price_numbers else 15000
                 
@@ -11620,7 +11670,18 @@ class Main(QMainWindow):
                 
                 # 현재가격
                 current_price = product.get('current_price', 0)
-                self.favorite_table.setItem(row, 1, QTableWidgetItem(f"{current_price:,}엔"))
+                if isinstance(current_price, str):
+                    # 문자열에서 숫자만 추출 (¥150,000 → 150000)
+                    price_numbers = re.findall(r'[\d,]+', current_price)
+                    if price_numbers:
+                        current_price = int(price_numbers[0].replace(',', ''))
+                    else:
+                        current_price = 0
+                
+                if current_price > 0:
+                    self.favorite_table.setItem(row, 1, QTableWidgetItem(f"¥{current_price:,}"))
+                else:
+                    self.favorite_table.setItem(row, 1, QTableWidgetItem("-"))
                 
                 # 경쟁사 최저가 → 최저가
                 lowest_price = product.get('lowest_price', 0)
@@ -11757,7 +11818,6 @@ class Main(QMainWindow):
             current_price_str = product.get('current_price', '0')
             
             # 가격에서 숫자만 추출
-            import re
             price_numbers = re.findall(r'[\d,]+', current_price_str)
             current_price = int(price_numbers[0].replace(',', '')) if price_numbers else 0
             
@@ -11845,6 +11905,14 @@ class Main(QMainWindow):
                 try:
                     product_name = product.get('name', '')
                     current_price = product.get('current_price', 0)
+                    
+                    # 현재가격을 숫자로 변환
+                    if isinstance(current_price, str):
+                        price_numbers = re.findall(r'[\d,]+', current_price)
+                        if price_numbers:
+                            current_price = int(price_numbers[0].replace(',', ''))
+                        else:
+                            current_price = 0
                     
                     self.my_products_log_signal.emit(f"📊 분석 중 ({i+1}/{len(self.favorite_products)}): {product_name}")
                     
@@ -12186,7 +12254,6 @@ class Main(QMainWindow):
                                     price_text = price_elem.text.strip()
                                     
                                     # 가격에서 숫자만 추출 (¥12,000 → 12000)
-                                    import re
                                     price_numbers = re.findall(r'[\d,]+', price_text)
                                     if price_numbers:
                                         price = int(price_numbers[0].replace(',', ''))
@@ -12512,6 +12579,10 @@ class Main(QMainWindow):
             brand_input = brand_inputs[0]
             brand_input.clear()
             brand_input.send_keys(brand_name)
+            
+            time.sleep(1)
+            
+            brand_input.send_keys(Keys.TAB)
             
             self.log_message(f"✅ 브랜드명 입력 완료: {brand_name}")
             return True
@@ -13561,7 +13632,6 @@ https://www.buyma.com/contents/safety/anshin.html
             try:
                 # 가격에서 숫자만 추출
                 price_text = product_data.get('price', '')
-                import re
                 price_numbers = re.findall(r'[\d,]+', str(price_text))
                 
                 if price_numbers:
