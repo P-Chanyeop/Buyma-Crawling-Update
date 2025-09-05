@@ -6055,7 +6055,7 @@ class Main(QMainWindow):
             # 엑셀 파일 헤더만 생성
             import pandas as pd
             df_header = pd.DataFrame(columns=[
-                '페이지', '상품명', '현재가격', '최저가', '제안가', '가격차이', '상태', '처리시간'
+                '페이지', '상품명', '현재가격', '최저가', '가격차이', '상태', '처리시간'
             ])
             df_header.to_excel(self.current_excel_file, index=False)
             
@@ -6078,13 +6078,34 @@ class Main(QMainWindow):
             # 데이터 준비
             page_data = []
             for product in current_page_products:
+                # 상품명에서 브랜드와 상품명만 추출 (商品ID 이전까지)
+                full_title = product.get('title', '')
+                clean_title = full_title
+                
+                # 商品ID 이전까지만 추출
+                if '商品ID' in full_title:
+                    clean_title = full_title.split('商品ID')[0].strip()
+                
+                # 현재가격과 최저가에서 가격차이 계산
+                current_price_num = 0
+                lowest_price_num = product.get('lowest_price', 0)
+                
+                # 현재가격에서 숫자 추출
+                current_price_str = product.get('current_price', '')
+                if current_price_str:
+                    price_numbers = re.findall(r'[\d,]+', str(current_price_str))
+                    if price_numbers:
+                        current_price_num = int(price_numbers[0].replace(',', ''))
+                
+                # 가격차이 계산 (현재가격 - 최저가)
+                price_diff = current_price_num - lowest_price_num if current_price_num > 0 and lowest_price_num > 0 else 0
+                
                 page_data.append({
                     '페이지': page_num,
-                    '상품명': product.get('title', ''),
+                    '상품명': clean_title,
                     '현재가격': product.get('current_price', ''),
                     '최저가': f"¥{product.get('lowest_price', 0):,}" if product.get('lowest_price', 0) > 0 else '-',
-                    '제안가': f"¥{product.get('suggested_price', 0):,}" if product.get('suggested_price', 0) > 0 else '-',
-                    '가격차이': f"{product.get('price_difference', 0):+,}엔" if product.get('price_difference', 0) != 0 else '-',
+                    '가격차이': f"{price_diff:+,}엔" if price_diff != 0 else '-',
                     '상태': product.get('status', ''),
                     '처리시간': datetime.now().strftime('%H:%M:%S')
                 })
@@ -6253,7 +6274,7 @@ class Main(QMainWindow):
                     if lowest_price and lowest_price > 0:
                         # 제안가 계산
                         suggested_price = max(lowest_price - discount, 0)
-                        price_difference = suggested_price - current_price_int
+                        price_difference = current_price_int - lowest_price
                         
                         # 상품 데이터 업데이트
                         product['lowest_price'] = lowest_price
@@ -6261,7 +6282,11 @@ class Main(QMainWindow):
                         product['price_difference'] = price_difference
                         
                         # 수정 필요 여부 판단
-                        if price_difference >= -abs(min_margin):
+                        if price_difference <= 0:
+                            # 내 상품이 최저가이거나 더 저렴함 - 수정 불필요
+                            product['status'] = '✅ 현재가 적정 (최저가)'
+                            product['needs_update'] = False
+                        elif price_difference >= -abs(min_margin):
                             product['status'] = '💰 가격 수정 필요'
                             product['needs_update'] = True
                         else:
@@ -10756,7 +10781,7 @@ class Main(QMainWindow):
                 df = pd.read_excel(file_path)
             
             # 필수 컬럼 확인
-            required_columns = ['상품명', '상품ID', '현재가격']
+            required_columns = ['상품명', '상품ID']
             missing_columns = [col for col in required_columns if col not in df.columns]
             
             if missing_columns:
@@ -10764,7 +10789,7 @@ class Main(QMainWindow):
                     self, 
                     "컬럼 오류", 
                     f"필수 컬럼이 없습니다: {', '.join(missing_columns)}\n\n"
-                    f"필요한 컬럼: 상품명, 상품ID, 현재가격"
+                    f"필요한 컬럼: 상품명, 상품ID"
                 )
                 return
             
@@ -10777,17 +10802,9 @@ class Main(QMainWindow):
                 try:
                     product_name = str(row['상품명']).strip()
                     product_id = str(row['상품ID']).strip()
-                    current_price = str(row['현재가격']).replace(',', '').strip()
                     
                     # 빈 값 체크
-                    if not product_name or not product_id or not current_price:
-                        error_count += 1
-                        continue
-                    
-                    # 가격 숫자 변환 체크
-                    try:
-                        price_num = int(current_price)
-                    except:
+                    if not product_name or not product_id:
                         error_count += 1
                         continue
                     
@@ -10800,7 +10817,7 @@ class Main(QMainWindow):
                     favorite_product = {
                         'name': product_name,
                         'product_id': product_id,
-                        'current_price': f"¥{price_num:,}",
+                        'current_price': 0,  # 기본값으로 설정
                         'lowest_price': 0,
                         'suggested_price': 0,
                         'price_difference': 0,
@@ -11931,7 +11948,7 @@ class Main(QMainWindow):
                         else:
                             # 현재가가 최저가보다 높으면 제안가 계산
                             suggested_price = competitor_price - discount_amount
-                            price_diff = suggested_price - current_price
+                            price_diff = current_price - competitor_price
                             
                             # 상태 결정 (가격차이 기준)
                             if price_diff < -min_margin:
@@ -14341,7 +14358,9 @@ https://www.buyma.com/contents/safety/anshin.html
                         price_difference = current_price - lowest_price if current_price > 0 else 0
                         
                         # 상태 결정
-                        if price_difference < -min_margin:
+                        if price_difference <= 0:
+                            status = "✅ 현재가 적정 (최저가)"
+                        elif price_difference < -min_margin:
                             status = f"⚠️ 손실 예상 ({price_difference:+,}엔)"
                         elif abs(price_difference) <= 100:
                             status = "✅ 현재가 적정"
