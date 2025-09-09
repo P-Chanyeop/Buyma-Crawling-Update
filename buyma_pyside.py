@@ -4043,8 +4043,9 @@ class Main(QMainWindow):
             
             # 브랜드명 추출
             try:
-                brand_element = self.shared_driver.find_element(By.CSS_SELECTOR, "div.brand-wrap")
-                brand = brand_element.text.replace("i", "").strip() if brand_element else "Unknown Brand"
+                brand_element = self.shared_driver.find_element(By.CSS_SELECTOR, "a.brand-link")
+                brand = brand_element.text.strip() if brand_element else "Unknown Brand"
+                
             except Exception as e:
                 self.log_message(f"⚠️ 브랜드 추출 실패: {str(e)}")
                 brand = "Unknown Brand"
@@ -4458,8 +4459,8 @@ class Main(QMainWindow):
             
             # 브랜드명 추출 (안전장치)
             try:
-                brand_element = driver.find_element(By.CSS_SELECTOR, "div.brand-wrap")
-                brand = brand_element.text.replace("i", "").strip() if brand_element else "Unknown Brand"
+                brand_element = driver.find_element(By.CSS_SELECTOR, "div.brand-wrap > a")
+                brand = brand_element.text.strip() if brand_element else "Unknown Brand"
             except Exception as e:
                 self.log_message(f"⚠️ 브랜드 추출 실패: {str(e)}")
                 brand = "Unknown Brand"
@@ -5450,11 +5451,29 @@ class Main(QMainWindow):
             
             while True:
                 
-                # 내 상품 페이지로 이동
+                # 내 상품 페이지로 이동 (재시도 로직 포함)
                 my_products_url = f"https://www.buyma.com/my/sell?duty_kind=all&facet=brand_id%2Ccate_pivot%2Cstatus%2Ctag_ids%2Cshop_labels%2Cstock_state&order=desc&page={page_number}&rows=100&sale_kind=all&sort=item_id&status=for_sale&timesale_kind=all#/"
                 self.my_products_log_signal.emit(f"🌐 내 상품 페이지 {page_number} 접속 중...")
                 
-                self.shared_driver.get(my_products_url)
+                # 페이지 로딩 재시도 (최대 3회)
+                success = False
+                for retry in range(3):
+                    try:
+                        self.shared_driver.set_page_load_timeout(30)  # 20초 타임아웃
+                        self.shared_driver.get(my_products_url)
+                        success = True
+                        break
+                    except Exception as e:
+                        if retry < 2:
+                            self.my_products_log_signal.emit(f"⚠️ 페이지 로딩 재시도 {retry + 1}/3... ({str(e)[:50]})")
+                            time.sleep(5)
+                        else:
+                            self.my_products_log_signal.emit(f"❌ 페이지 로딩 실패: {str(e)}")
+                            return
+                
+                if not success:
+                    return
+                    
                 time.sleep(3)
                 
                 # 상품 목록 크롤링
@@ -5465,7 +5484,7 @@ class Main(QMainWindow):
                 # 상품 요소들 찾기
                 try:
                     # 상품 리스트 대기
-                    WebDriverWait(self.shared_driver, 10).until(
+                    WebDriverWait(self.shared_driver, 30).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "tr.cursor_pointer.js-checkbox-check-row"))
                     )
                     
@@ -6520,10 +6539,13 @@ class Main(QMainWindow):
                 #     self.log_message(f"❌ 현재가가 최저가와 동일하여 가격 수정을 건너뜁니다: {product_name[:20]}...")
                 #     return False
                 
-                # 가격차이 체크: 0이면 수정하지 않음
+                # 가격차이 체크: 0이거나 음수면 수정하지 않음
                 price_difference = current_price_on_page - (new_price + discount_amount)
                 if price_difference == 0:
                     self.log_message(f"⏭️ 건너뛰기: {product_name[:20]}... - 현재가 적정 (동일가)")
+                    return False
+                elif price_difference < 0:
+                    self.log_message(f"⏭️ 건너뛰기: {product_name[:20]}... - 현재가 적정 (최저가)")
                     return False
                 
                 # 수동 모드: 사용자 확인
