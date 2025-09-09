@@ -6290,10 +6290,6 @@ class Main(QMainWindow):
                             # 내 상품이 더 저렴함 - 수정 불필요
                             product['status'] = '✅ 현재가 적정 (최저가)'
                             product['needs_update'] = False
-                        elif abs(current_price_int - suggested_price) < 100:
-                            # 현재가와 제안가 차이가 100엔 미만이면 수정 불필요
-                            product['status'] = '✅ 현재가 적정'
-                            product['needs_update'] = False
                         elif price_difference > min_margin:
                             # 가격차이가 최소마진보다 크면 과도한 손실 예상
                             product['status'] = f'⚠️ 손실 예상 ({price_difference:+,}엔)'
@@ -6524,13 +6520,10 @@ class Main(QMainWindow):
                 #     self.log_message(f"❌ 현재가가 최저가와 동일하여 가격 수정을 건너뜁니다: {product_name[:20]}...")
                 #     return False
                 
-                # 가격차이 체크: 0이거나 100엔 미만이면 수정하지 않음
+                # 가격차이 체크: 0이면 수정하지 않음
                 price_difference = current_price_on_page - (new_price + discount_amount)
                 if price_difference == 0:
                     self.log_message(f"⏭️ 건너뛰기: {product_name[:20]}... - 현재가 적정 (동일가)")
-                    return False
-                elif abs(price_difference) < 100:
-                    self.log_message(f"⏭️ 건너뛰기: {product_name[:20]}... - 현재가 적정 (차이 {price_difference:+,}엔)")
                     return False
                 
                 # 수동 모드: 사용자 확인
@@ -11512,11 +11505,6 @@ class Main(QMainWindow):
                         if price_diff == 0:
                             # 가격차이가 정확히 0이면 수정 불필요
                             status = "✅ 현재가 적정 (동일가)"
-                        elif abs(price_diff) <= 100:  # 100엔 이내 차이면 적정
-                            status = "✅ 현재가 적정"
-                        elif abs(current_price - suggested_price) < 100:
-                            # 현재가와 제안가 차이가 100엔 미만이면 수정 불필요
-                            status = "✅ 현재가 적정"
                         elif price_diff > min_margin:
                             # 가격차이가 +설정값보다 크면 (예: +7000 > +500)
                             status = f"⚠️ 손실 예상 ({price_diff:+,}엔)"
@@ -11988,10 +11976,6 @@ class Main(QMainWindow):
                                 # 가격차이가 정확히 0이면 수정 불필요
                                 status = "✅ 현재가 적정 (동일가)"
                                 needs_update = False
-                            elif abs(current_price - suggested_price) < 100:
-                                # 현재가와 제안가 차이가 100엔 미만이면 수정 불필요
-                                status = "✅ 현재가 적정"
-                                needs_update = False
                             elif price_diff > min_margin:
                                 status = f"⚠️ 손실 예상 ({price_diff:+,}엔)"
                                 needs_update = False
@@ -12055,7 +12039,7 @@ class Main(QMainWindow):
                         
                         if not is_auto_mode:
                             
-                            # 가격차이가 0이거나 100엔 미만인 경우 건너뛰기
+                            # 가격차이가 0인 경우에만 건너뛰기
                             current_price = product.get('current_price', 0)
                             lowest_price = product.get('lowest_price', 0)
                             price_diff = current_price - lowest_price
@@ -12063,11 +12047,6 @@ class Main(QMainWindow):
                             if price_diff == 0:
                                 self.my_products_log_signal.emit(f"⏭️ 현재가가 최저가와 동일하여 건너뜀: {product_name}")
                                 product['status'] = "✅ 현재가 적정 (동일가)"
-                                product['needs_update'] = False
-                                continue
-                            elif abs(price_diff) < 100:
-                                self.my_products_log_signal.emit(f"⏭️ 가격차이 100엔 미만으로 건너뜀: {product_name} (차이: {price_diff:+,}엔)")
-                                product['status'] = "✅ 현재가 적정"
                                 product['needs_update'] = False
                                 continue
                             
