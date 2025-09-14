@@ -16,7 +16,15 @@ import random
 import time
 import re
 from datetime import datetime
-import time 
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+
+import time
 
 # 전역 예외 핸들러 추가 - 프로그램 튕김 방지
 def handle_exception(exc_type, exc_value, exc_traceback):
@@ -97,15 +105,7 @@ def safe_slot(func):
                 pass
     return wrapper
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
 
-import time
 
 
 # ==================== 진행률 위젯 클래스 ====================
@@ -1885,6 +1885,22 @@ class Main(QMainWindow):
         self.exclude_loss_products.setChecked(True)
         self.exclude_loss_products.setToolTip("마진이 최소 마진보다 적은 상품은 가격 수정에서 제외")
         analysis_layout.addWidget(self.exclude_loss_products, 2, 0, 1, 4)
+        
+        # 정렬 옵션 추가
+        analysis_layout.addWidget(QLabel("정렬 방식:"), 3, 0)
+        self.sort_option = QComboBox()
+        self.sort_option.addItems(["기본 정렬", "카트순", "하트순"])
+        self.sort_option.setToolTip("내 상품 불러오기 시 정렬 방식을 선택하세요")
+        self.sort_option.setStyleSheet("""
+            QComboBox {
+                padding: 5px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                background: white;
+                font-size: 12px;
+            }
+        """)
+        analysis_layout.addWidget(self.sort_option, 3, 1)
         
         layout.addWidget(analysis_group)
         
@@ -5419,6 +5435,11 @@ class Main(QMainWindow):
     def crawl_my_products(self):
         """내 상품 크롤링 실행 - JSON 파일로 저장"""
         try:
+            # 필요한 import를 함수 시작 부분에 추가
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            
             if not self.shared_driver:
                 self.log_error("❌ 브라우저가 초기화되지 않았습니다.")
                 return
@@ -5476,11 +5497,43 @@ class Main(QMainWindow):
                     
                 time.sleep(3)
                 
-                # 상품 목록 크롤링
-                from selenium.webdriver.common.by import By
-                from selenium.webdriver.support.ui import WebDriverWait
-                from selenium.webdriver.support import expected_conditions as EC
+                # 첫 페이지에서만 정렬 옵션 적용
+                if page_number == 1:
+                    try:
+                        sort_option = self.sort_option.currentText()
+                        cart_sort_btn = self.shared_driver.find_elements(By.CSS_SELECTOR, 'th.txtCenter')
+                        
+                        if sort_option == "카트순":
+                            self.my_products_log_signal.emit("🛒 카트순 정렬 적용 중...")
+                            # 카트순 정렬 버튼 클릭    
+                            cart_sort_btn[0].find_element(By.TAG_NAME, 'a').click()
+                            time.sleep(2)
+                        elif sort_option == "하트순":
+                            self.my_products_log_signal.emit("💖 하트순 정렬 적용 중...")
+                            # 하트순 정렬 버튼 클릭
+                            cart_sort_btn[1].find_element(By.TAG_NAME, 'a').click()
+                            time.sleep(2)
+                        else:
+                            self.my_products_log_signal.emit("📋 기본 정렬 사용")
+                    except Exception as e:
+                        self.my_products_log_signal.emit(f"⚠️ 정렬 옵션 적용 실패: {str(e)}")
+                        # 정렬 실패해도 계속 진행b
+                        pass
+                    
+                    # except Exception as e:
+                    #     if retry < 2:
+                    #         self.my_products_log_signal.emit(f"⚠️ 페이지 로딩 재시도 {retry + 1}/3... ({str(e)[:50]})")
+                    #         time.sleep(5)
+                    #     else:
+                    #         self.my_products_log_signal.emit(f"❌ 페이지 로딩 실패: {str(e)}")
+                    #         return
                 
+                if not success:
+                    return
+                    
+                time.sleep(3)
+                
+                # 상품 목록 크롤링
                 # 상품 요소들 찾기
                 try:
                     # 상품 리스트 대기
@@ -10132,6 +10185,7 @@ class Main(QMainWindow):
             'min_margin': self.min_margin.value(),  # 다시 추가됨
             'exclude_loss_products': self.exclude_loss_products.isChecked(),
             'auto_mode': self.auto_mode.isChecked(),
+            'sort_option': self.sort_option.currentText(),  # 정렬 옵션 추가
             # 업로드 설정
             'max_images': self.max_images.value(),
             'include_images': self.include_images.isChecked(),
@@ -10179,6 +10233,11 @@ class Main(QMainWindow):
                 self.auto_mode.setChecked(settings.get('auto_mode', True))
                 if not settings.get('auto_mode', True):
                     self.manual_mode.setChecked(True)
+                # 정렬 옵션 불러오기
+                sort_option = settings.get('sort_option', '기본 정렬')
+                index = self.sort_option.findText(sort_option)
+                if index >= 0:
+                    self.sort_option.setCurrentIndex(index)
                 # 업로드 설정
                 self.max_images.setValue(settings.get('max_images', 10))
                 self.include_images.setChecked(settings.get('include_images', True))
@@ -10214,6 +10273,8 @@ class Main(QMainWindow):
             self.min_margin.setValue(500)  # 다시 추가됨
             self.exclude_loss_products.setChecked(True)
             self.auto_mode.setChecked(True)
+            # 정렬 옵션 기본값으로 초기화
+            self.sort_option.setCurrentIndex(0)  # "기본 정렬"로 설정
             # 대시보드 설정
             self.dashboard_url.clear()
             self.dashboard_count.setValue(20)
