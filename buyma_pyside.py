@@ -1996,10 +1996,35 @@ class Main(QMainWindow):
         """)
         self.update_prices_btn.clicked.connect(self.update_analyzed_prices)
         
+        # 테이블 초기화 버튼 추가
+        self.clear_price_table_btn = QPushButton("🗑️ 테이블 초기화")
+        self.clear_price_table_btn.setMinimumHeight(45)
+        self.clear_price_table_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #dc3545, stop:1 #c82333);
+                font-size: 13px;
+                font-weight: bold;
+                color: white;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #c82333, stop:1 #a71e2a);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #a71e2a, stop:1 #8b1a1a);
+            }
+        """)
+        self.clear_price_table_btn.clicked.connect(self.clear_price_table)
+        
         # price_control_layout.addWidget(self.load_my_products_btn)
         # price_control_layout.addWidget(self.update_prices_btn)  # 개별 가격수정 버튼 주석처리
         price_control_layout.addWidget(self.load_json_btn)
         price_control_layout.addWidget(self.analyze_price_btn)  # 개별 가격분석 버튼 주석처리
+        price_control_layout.addWidget(self.clear_price_table_btn)
         
         layout.addLayout(price_control_layout)
         
@@ -5809,6 +5834,38 @@ class Main(QMainWindow):
         except Exception as e:
             self.log_error(f"❌ JSON 파일 불러오기 오류: {str(e)}")
             QMessageBox.critical(self, "오류", f"JSON 파일 불러오기 실패:\n{str(e)}")
+    
+    def clear_price_table(self):
+        """가격관리 테이블 초기화"""
+        try:
+            # 사용자 확인
+            reply = QMessageBox.question(
+                self, 
+                "테이블 초기화 확인", 
+                "가격관리 테이블의 모든 데이터를 삭제하시겠습니까?\n\n"
+                "이 작업은 되돌릴 수 없습니다.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                # 테이블 초기화
+                self.price_table.setRowCount(0)
+                
+                # 상품 데이터 초기화
+                self.all_products = []
+                
+                # 페이지네이션 초기화
+                self.current_page = 0
+                self.total_pages = 0
+                self.update_pagination_info()
+                
+                self.log_message("🗑️ 가격관리 테이블이 초기화되었습니다.")
+                QMessageBox.information(self, "완료", "테이블이 성공적으로 초기화되었습니다.")
+            
+        except Exception as e:
+            self.log_message(f"❌ 테이블 초기화 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"테이블 초기화 실패:\n{str(e)}")
     
     def load_previous_page(self):
         """이전 페이지 로드"""
