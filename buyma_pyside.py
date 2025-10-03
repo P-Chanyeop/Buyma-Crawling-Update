@@ -6575,6 +6575,74 @@ class Main(QMainWindow):
             self.my_products_log_signal.emit(f"❌ 페이지 수정 오류: {str(e)}")
             return 0
 
+    def update_buyma_product_price_with_id(self, product_name, new_price, product_id, is_auto_mode=False, show_dialog=True):
+        """BUYMA에서 상품 가격 수정 (상품ID 직접 사용)"""
+        try:
+            # 1. BUYMA 상품 수정 페이지 접속 (상품ID 사용)
+            edit_url = f"https://www.buyma.com/my/sell/search?sale_kind=all&duty_kind=all&keyword={product_id}&status=for_sale&multi_id=#/"
+            self.log_message(f"🔗 상품 수정 페이지 접속: {edit_url}")
+            
+            self.shared_driver.get(edit_url)
+            import time
+            time.sleep(3)
+            
+            # 2. 가격 수정 버튼 클릭
+            try:
+                from selenium.webdriver.support.ui import WebDriverWait
+                from selenium.webdriver.support import expected_conditions as EC
+                from selenium.webdriver.common.by import By
+                
+                price_edit_btn = WebDriverWait(self.shared_driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "a._item_edit_tanka"))
+                )
+                price_edit_btn.click()
+                self.log_message("💰 가격 수정 버튼 클릭")
+                time.sleep(2)
+            except Exception as e:
+                self.log_error(f"가격 수정 버튼을 찾을 수 없습니다: {str(e)}")
+                return False
+            
+            # 3. 현재 가격 확인
+            try:
+                price_input = WebDriverWait(self.shared_driver, 10).until(
+                    EC.presence_of_element_located((By.NAME, "item_price"))
+                )
+                current_price_on_page = int(price_input.get_attribute("value") or "0")
+                self.log_message(f"📋 BUYMA 페이지 현재 가격: ¥{current_price_on_page:,}")
+            except Exception as e:
+                self.log_error(f"현재 가격을 확인할 수 없습니다: {str(e)}")
+                current_price_on_page = 0
+            
+            # 4. 가격 입력
+            try:
+                price_input.clear()
+                price_input.send_keys(str(new_price))
+                self.log_message(f"💰 새 가격 입력: ¥{new_price:,}")
+                time.sleep(1)
+            except Exception as e:
+                self.log_error(f"가격 입력 실패: {str(e)}")
+                return False
+            
+            # 5. 설정하기 버튼 클릭
+            try:
+                commit_btn = WebDriverWait(self.shared_driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "a.js-commit-item-price"))
+                )
+                commit_btn.click()
+                self.log_message("✅ 설정하기 버튼 클릭")
+                time.sleep(3)
+                
+                self.log_message(f"✅ 가격 수정 완료: {product_name[:20]}... → ¥{new_price:,}")
+                return True
+                
+            except Exception as e:
+                self.log_error(f"설정하기 버튼을 찾을 수 없습니다: {str(e)}")
+                return False
+                
+        except Exception as e:
+            self.log_error(f"가격 수정 오류: {str(e)}")
+            return False
+
     def update_buyma_product_price(self, product_name, new_price, is_auto_mode=False, show_dialog=True):
         """BUYMA에서 상품 가격 수정"""
         try:
@@ -12095,7 +12163,17 @@ class Main(QMainWindow):
                     # 진행률 업데이트 (1단계: 가격확인) - 시그널 사용
                     self.progress_update_signal.emit(i+1, len(self.favorite_products)*2, f"⭐ 가격확인: {product_name[:20]}...")
                     
-                    # 가격관리 탭의 가격확인 로직 활용
+                    # 1. 먼저 본인 상품에서 최신 현재가 조회
+                    self.my_products_log_signal.emit(f"📋 본인 상품 현재가 조회: {product_name}")
+                    updated_current_price = self.get_current_price_from_buyma(product_name)
+                    if updated_current_price and updated_current_price > 0:
+                        current_price = updated_current_price
+                        product['current_price'] = current_price
+                        self.my_products_log_signal.emit(f"💰 현재가 업데이트: {current_price:,}엔")
+                    else:
+                        self.my_products_log_signal.emit(f"⚠️ 현재가 조회 실패, 저장된 값 사용: {current_price:,}엔")
+                    
+                    # 2. 경쟁사 최저가 조회
                     competitor_price = self.get_buyma_lowest_price_for_favorite(product_name, brand_name=product.get('brand', ''))
                     
                     if competitor_price != None and competitor_price > 0:
@@ -12217,8 +12295,12 @@ class Main(QMainWindow):
                                 self.my_products_log_signal.emit(f"⏭️ 사용자 취소: {product_name}")
                                 continue
                         
-                        # 실제 가격 수정 실행 (다이얼로그 비활성화 - 이미 위에서 처리함)
-                        success = self.update_buyma_product_price(product_name, suggested_price, True, show_dialog=False)
+                        # 실제 가격 수정 실행 (product_id 직접 전달)
+                        product_id = product.get('product_id', '')
+                        if product_id:
+                            success = self.update_buyma_product_price_with_id(product_name, suggested_price, product_id, True, show_dialog=False)
+                        else:
+                            success = self.update_buyma_product_price(product_name, suggested_price, True, show_dialog=False)
                         
                         if success:
                             product['status'] = "✅ 가격 수정 완료"
@@ -12229,6 +12311,7 @@ class Main(QMainWindow):
                             product['status'] = "❌ 가격 수정 실패"
                             self.my_products_log_signal.emit(f"❌ 가격 수정 실패: {product_name}")
                         
+                        import time
                         time.sleep(2)  # 상품 간 딜레이
                         
                     except Exception as e:
@@ -12333,8 +12416,58 @@ class Main(QMainWindow):
             self.set_tabs_enabled(True)
         except Exception as e:
             self.log_message(f"UI 복원 오류: {str(e)}")
+            
+    def get_current_price_from_buyma(self, product_name):
+        """BUYMA 내 상품 검색으로 현재가 조회"""
+        try:
+            if not self.shared_driver:
+                self.log_message("❌ 브라우저가 초기화되지 않았습니다.")
+                return None
+            
+            # BUYMA 내 상품 검색 페이지로 이동
+            product_url = f"https://www.buyma.com/my/sell/search?sale_kind=all&duty_kind=all&keyword={product_name}&multi_id=#/"
+            self.shared_driver.get(product_url)
+            time.sleep(3)
+            
+            # 상품 요소들 수집 (crawl_my_products와 동일한 로직)
+            try:
+                product_elements = self.shared_driver.find_elements(By.CSS_SELECTOR, "tr.cursor_pointer.js-checkbox-check-row")
+                
+                if not product_elements:
+                    self.log_message("⚠️ 검색 결과에서 상품을 찾을 수 없습니다.")
+                    return None
+                
+                # 홀수일때 상품, 짝수일때 태그라서 태그는 제외
+                product_elements = [elem for i, elem in enumerate(product_elements) if i % 2 == 0] # 홀수 인덱스 제외, ex 0,2,4... -> 상품
+                
+                if not product_elements:
+                    self.log_message("⚠️ 필터링 후 상품을 찾을 수 없습니다.")
+                    return None
+                
+                # 첫 번째 상품에서 가격 추출
+                first_product = product_elements[0]
+                price_elem = first_product.find_element(By.CSS_SELECTOR, "span.js-item-price-display")
+                price_text = price_elem.text.strip()
+                
+                # 가격에서 숫자만 추출
+                price_numbers = re.findall(r'[\d,]+', price_text)
+                if price_numbers:
+                    current_price = int(price_numbers[0].replace(',', ''))
+                    return current_price
+                else:
+                    self.log_message(f"⚠️ 가격 텍스트에서 숫자를 추출할 수 없습니다: {price_text}")
+                    return None
+                    
+            except Exception as e:
+                self.log_message(f"⚠️ 검색 결과에서 가격을 찾을 수 없습니다: {str(e)}")
+                return None
+                
+        except Exception as e:
+            self.log_message(f"❌ 현재가 조회 오류 (상품명: {product_name}): {str(e)}")
+            return None
+        
+    def get_buyma_lowest_price_for_favorite(self, product_name, brand_name=""):
     
-    def get_buyma_lowest_price_for_favorite(self, product_name, brand_name):
         """주력상품용 BUYMA 최저가 조회 (search_buyma_lowest_price 로직 활용)"""
         try:
             # 1. 상품명에서 실제 검색어 추출 (商品ID 이전까지)
