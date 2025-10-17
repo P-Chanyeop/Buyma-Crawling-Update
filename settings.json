@@ -1,6 +1,6 @@
 {
-  "email": "neiro.kor@gmail.com",
-  "password": "V2tkd2xkYnMyISE=",
+  "email": "ourshimizu@gmail.com",
+  "password": "dmxmcW5zMTIzIQ==",
   "browser": "Chrome",
   "timeout": 5,
   "retry_count": 3,
@@ -10,6 +10,7 @@
   "min_margin": 500,
   "exclude_loss_products": true,
   "auto_mode": true,
+  "sort_option": "기본 정렬",
   "max_images": 10,
   "include_images": true,
   "include_options": true,

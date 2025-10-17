@@ -1,0 +1,38 @@
+{
+  "수집_정보": {
+    "수집_날짜": "2025-10-17",
+    "수집_시간": "16:26:49",
+    "총_상품수": 4,
+    "타입": "가격관리_테스트"
+  },
+  "상품_목록": [
+    {
+      "title": "샤넬 클래식 플랩백 미디움\n商品ID 12345678 (詳細)\n出品情報をコピーして新規出品",
+      "current_price": "850,000",
+      "url": "https://www.buyma.com/item/12345678",
+      "status": "분석 대기",
+      "excluded": true
+    },
+    {
+      "title": "구찌 마몬트 숄더백\n商品ID 87654321 (詳細)\n出品情報をコピーして新規出品",
+      "current_price": "320,000",
+      "url": "https://www.buyma.com/item/87654321",
+      "status": "분석 대기",
+      "excluded": false
+    },
+    {
+      "title": "루이비통 네버풀 MM\n商品ID 11111111 (詳細)\n出品情報をコピーして新規出品",
+      "current_price": "280,000",
+      "url": "https://www.buyma.com/item/11111111",
+      "status": "분석 대기",
+      "excluded": true
+    },
+    {
+      "title": "에르메스 버킨백 25\n商品ID 22222222 (詳細)\n出品情報をコピーして新規出品",
+      "current_price": "1,200,000",
+      "url": "https://www.buyma.com/item/22222222",
+      "status": "분석 대기",
+      "excluded": false
+    }
+  ]
+}
