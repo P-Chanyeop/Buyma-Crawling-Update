@@ -5562,7 +5562,8 @@ class Main(QMainWindow):
             
             self.log_message(f"📁 상품 정보를 {json_filename} 파일로 저장합니다.")
             
-            page_number = 1
+            # 테스트용: 22페이지부터 시작
+            page_number = 22
             total_products = 0
             
             # JSON 파일 초기화
