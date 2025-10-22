@@ -5563,7 +5563,7 @@ class Main(QMainWindow):
             self.log_message(f"📁 상품 정보를 {json_filename} 파일로 저장합니다.")
             
             # 테스트용: 22페이지부터 시작
-            page_number = 22
+            page_number = 29
             total_products = 0
             
             # JSON 파일 초기화
@@ -7542,8 +7542,14 @@ class Main(QMainWindow):
             if "商品ID" in product_name:
                 search_name = product_name.split("商品ID")[0].strip()
             
-            # 추가 정리 (줄바꿈, 특수문자 제거)
-            search_name = search_name.replace("\n", " ").replace("★", " ").strip()
+            # 【送料0/関税0】, 【送料無料】 등 불필요한 태그 제거
+            search_name = re.sub(r'【[^】]*】', '', search_name).strip()
+            
+            # 슬래시(/) 제거 - BUYMA 검색에서 구분자로 인식되어 문제 발생
+            search_name = search_name.replace('/', ' ').strip()
+            
+            # 추가 정리 (특수문자 제거, 영어와 숫자만 남기기)
+            search_name = re.sub(r'[^a-zA-Z0-9\s]', '', search_name).strip()
             
             # # 숫자가 포함된 단어 제거 후 영어만 남기기
             # import re
@@ -12829,8 +12835,14 @@ class Main(QMainWindow):
             if "商品ID" in product_name:
                 search_name = product_name.split("商品ID")[0].strip()
             
-            # 추가 정리 (줄바꿈, 특수문자 제거)
-            search_name = search_name.replace("\n", " ").replace("★", " ").strip()
+            # 【送料0/関税0】, 【送料無料】 등 불필요한 태그 제거
+            search_name = re.sub(r'【[^】]*】', '', search_name).strip()
+            
+            # 슬래시(/) 제거 - BUYMA 검색에서 구분자로 인식되어 문제 발생
+            search_name = search_name.replace('/', ' ').strip()
+            
+            # 추가 정리 (특수문자 제거, 영어와 숫자만 남기기)
+            search_name = re.sub(r'[^a-zA-Z0-9\s]', '', search_name).strip()
             
             # 숫자가 포함된 단어 제거 후 영어만 남기기
             # import re
