@@ -7576,10 +7576,16 @@ class Main(QMainWindow):
                     self.log_message("⚠️ 유효한 검색어가 없습니다.")
                     break
                 
-                search_url = f"https://www.buyma.com/r/-R120/{search_name}_{page_number}/"
+                # 캐시 무효화를 위한 타임스탬프 추가
+                import time
+                timestamp = int(time.time())
+                search_url = f"https://www.buyma.com/r/-R120/{search_name}_{page_number}/?t={timestamp}"
                 self.log_message(f"🌐 페이지 {page_number} 접속: {search_url}")
                             
                 try:
+                    # 브라우저 캐시 강제 새로고침
+                    self.shared_driver.execute_script("window.location.reload(true);")
+                    time.sleep(1)
                     self.shared_driver.get(search_url)
                     time.sleep(3)
                 except Exception as e:
@@ -12868,10 +12874,16 @@ class Main(QMainWindow):
                     self.log_message("⚠️ 유효한 검색어가 없습니다.")
                     break
                 
-                search_url = f"https://www.buyma.com/r/-R120/{search_name}_{page_number}"
+                # 캐시 무효화를 위한 타임스탬프 추가
+                import time
+                timestamp = int(time.time())
+                search_url = f"https://www.buyma.com/r/-R120/{search_name}_{page_number}/?t={timestamp}"
                 self.log_message(f"🌐 주력상품 페이지 {page_number} 접속: {search_url}")
                 
                 try:
+                    # 브라우저 캐시 강제 새로고침
+                    self.shared_driver.execute_script("window.location.reload(true);")
+                    time.sleep(1)
                     self.shared_driver.get(search_url)
                     time.sleep(3)
                 except Exception as e:

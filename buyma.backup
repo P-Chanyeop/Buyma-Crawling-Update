@@ -685,6 +685,9 @@ class Main(QMainWindow):
         self.favorite_products = []
         self.favorites_file = "주력상품_목록.json"
         
+        # 제외할 상품ID 리스트 초기화
+        self.excluded_product_ids = []
+        
         # 반복 실행 관련 변수
         self.is_repeat_running = False
         self.repeat_timer = None
@@ -1908,6 +1911,24 @@ class Main(QMainWindow):
         
         layout.addWidget(analysis_group)
         
+        # 제외 상품 상태 표시
+        exclude_group = QGroupBox("🚫 제외 상품 관리")
+        exclude_layout = QVBoxLayout(exclude_group)
+        
+        self.exclude_status_label = QLabel("📋 현재 제외된 상품: 0개")
+        self.exclude_status_label.setStyleSheet("""
+            QLabel {
+                color: #6c757d;
+                font-size: 12px;
+                padding: 5px;
+                background: #f8f9fa;
+                border-radius: 4px;
+            }
+        """)
+        exclude_layout.addWidget(self.exclude_status_label)
+        
+        layout.addWidget(exclude_group)
+        
         # 가격 관리 컨트롤
         price_control_layout = QHBoxLayout()
         
@@ -2024,8 +2045,46 @@ class Main(QMainWindow):
         """)
         self.clear_price_table_btn.clicked.connect(self.clear_price_table)
         
+        # 제외할 상품ID 엑셀 업로드 버튼 추가
+        self.upload_exclude_btn = QPushButton("📤 제외상품ID 업로드")
+        self.upload_exclude_btn.setMinimumHeight(45)
+        self.upload_exclude_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ffc107, stop:1 #e0a800);
+                color: black;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e0a800, stop:1 #d39e00);
+            }
+        """)
+        self.upload_exclude_btn.clicked.connect(self.upload_exclude_ids)
+        
+        # 제외 목록 초기화 버튼 추가
+        self.clear_exclude_btn = QPushButton("🗑️ 제외목록 초기화")
+        self.clear_exclude_btn.setMinimumHeight(45)
+        self.clear_exclude_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #6c757d, stop:1 #545b62);
+                color: white;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #545b62, stop:1 #495057);
+            }
+        """)
+        self.clear_exclude_btn.clicked.connect(self.clear_exclude_list)
+
         # price_control_layout.addWidget(self.load_my_products_btn)
         # price_control_layout.addWidget(self.update_prices_btn)  # 개별 가격수정 버튼 주석처리
+        price_control_layout.addWidget(self.upload_exclude_btn)
+        price_control_layout.addWidget(self.clear_exclude_btn)
         price_control_layout.addWidget(self.load_json_btn)
         price_control_layout.addWidget(self.analyze_price_btn)  # 개별 가격분석 버튼 주석처리
         price_control_layout.addWidget(self.clear_price_table_btn)
@@ -2037,9 +2096,9 @@ class Main(QMainWindow):
         result_layout = QVBoxLayout(result_group)
         
         self.price_table = QTableWidget()
-        self.price_table.setColumnCount(7)
+        self.price_table.setColumnCount(8)
         self.price_table.setHorizontalHeaderLabels([
-            "상품명", "현재가격", "최저가", "제안가", "가격차이", "상태", "액션"
+            "제외", "상품명", "현재가격", "최저가", "제안가", "가격차이", "상태", "액션"
         ])
         
         # 테이블 스타일 설정
@@ -2082,13 +2141,14 @@ class Main(QMainWindow):
         header.setSectionResizeMode(0, header.ResizeMode.Interactive)
         
         # 컬럼 너비 설정
-        self.price_table.setColumnWidth(0, 500)  # 상품명 (더 넓게)
-        self.price_table.setColumnWidth(1, 100)  # 현재가격
-        self.price_table.setColumnWidth(2, 100)  # 최저가
-        self.price_table.setColumnWidth(3, 100)  # 제안가
-        self.price_table.setColumnWidth(4, 100)  # 마진
-        self.price_table.setColumnWidth(5, 120)  # 상태
-        self.price_table.setColumnWidth(6, 80)   # 액션
+        self.price_table.setColumnWidth(0, 50)   # 제외 체크박스
+        self.price_table.setColumnWidth(1, 450)  # 상품명 (줄임)
+        self.price_table.setColumnWidth(2, 100)  # 현재가격
+        self.price_table.setColumnWidth(3, 100)  # 최저가
+        self.price_table.setColumnWidth(4, 100)  # 제안가
+        self.price_table.setColumnWidth(5, 100)  # 마진
+        self.price_table.setColumnWidth(6, 120)  # 상태
+        self.price_table.setColumnWidth(7, 80)   # 액션
         
         result_layout.addWidget(self.price_table)
         
@@ -2392,21 +2452,22 @@ class Main(QMainWindow):
         table_layout = QVBoxLayout(table_group)
         
         self.favorite_table = QTableWidget()
-        self.favorite_table.setColumnCount(7)
+        self.favorite_table.setColumnCount(8)
         self.favorite_table.setHorizontalHeaderLabels([
-            "상품명", "현재가격", "최저가", "제안가", "가격차이", "상태", "액션"
+            "제외", "상품명", "현재가격", "최저가", "제안가", "가격차이", "상태", "액션"
         ])
         self.favorite_table.horizontalHeader().setStretchLastSection(True)
         self.favorite_table.setAlternatingRowColors(True)
         self.favorite_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         
         # 테이블 컬럼 너비 설정
-        self.favorite_table.setColumnWidth(0, 500)  # 상품명
-        self.favorite_table.setColumnWidth(1, 100)  # 현재가격
-        self.favorite_table.setColumnWidth(2, 100)  # 최저가
-        self.favorite_table.setColumnWidth(3, 100)  # 제안가
-        self.favorite_table.setColumnWidth(4, 100)  # 가격차이
-        self.favorite_table.setColumnWidth(5, 150)  # 상태
+        self.favorite_table.setColumnWidth(0, 50)   # 제외 체크박스
+        self.favorite_table.setColumnWidth(1, 450)  # 상품명 (줄임)
+        self.favorite_table.setColumnWidth(2, 100)  # 현재가격
+        self.favorite_table.setColumnWidth(3, 100)  # 최저가
+        self.favorite_table.setColumnWidth(4, 100)  # 제안가
+        self.favorite_table.setColumnWidth(5, 100)  # 가격차이
+        self.favorite_table.setColumnWidth(6, 150)  # 상태
         
         table_layout.addWidget(self.favorite_table)
         
@@ -2964,6 +3025,9 @@ class Main(QMainWindow):
         self.system_timer = QTimer()
         self.system_timer.timeout.connect(self.update_system_stats)
         self.system_timer.start(5000)  # 5초마다 업데이트
+        
+        # 제외 상품 상태 초기화
+        self.update_exclude_status()
         
     # 메서드들
     def update_time(self):
@@ -4877,7 +4941,6 @@ class Main(QMainWindow):
                 try:
                     self.shared_driver = webdriver.Chrome(options=chrome_options)
                     self.shared_driver.implicitly_wait(10)
-                    self.shared_driver.maximize_window()
                     
                     # 페이지 로딩 타임아웃 설정 (10초)
                     self.shared_driver.set_page_load_timeout(10)
@@ -5475,6 +5538,7 @@ class Main(QMainWindow):
     
     def crawl_my_products(self):
         """내 상품 크롤링 실행 - JSON 파일로 저장"""
+        print("🚀 crawl_my_products 함수 시작!")
         try:
             # 필요한 import를 함수 시작 부분에 추가
             from selenium.webdriver.common.by import By
@@ -5614,7 +5678,9 @@ class Main(QMainWindow):
                     self.log_message(f"✅ {len(product_elements)}개의 상품을 발견했습니다.")
                     
                     # 각 상품 정보 추출
+                    print(f"🔍 상품 루프 시작: {len(product_elements)}개 상품 처리")
                     for i, element in enumerate(product_elements):  # 최대 50개까지
+                        print(f"🔍 상품 {i+1} 처리 중...")
                         try:
                             # 상품명 추출
                             title_elem = element.find_element(By.CSS_SELECTOR, "td.item_name")
@@ -5636,10 +5702,21 @@ class Main(QMainWindow):
                                 link_elem = element.find_element(By.CSS_SELECTOR, "a.fab-design-d--b")
                                 product_url = link_elem.get_attribute("href")
                                 
-                                # URL에서 상품ID 추출 (예: /item/12345678/ → 12345678)
-                                id_match = re.search(r'/item/(\d+)/', product_url)
+                                # URL에서 상품ID 추출 (슬래시 유무 상관없이)
+                                id_match = re.search(r'/item/(\d+)', product_url)
+                                
                                 if id_match:
-                                    product_id = id_match.group(1)
+                                    product_id = '0' + id_match.group(1)
+                                    
+                                    # 모든 상품ID 출력 (0123840783 찾기 위해)
+                                    print(f"🔍 크롤링된 상품ID: '{product_id}' (타입: {type(product_id)})")
+                                    
+                                    # 제외할 상품ID인지 확인
+                                    if product_id in self.excluded_product_ids:
+                                        print(f"⏭️ 크롤링에서 제외: {title[:30]}... (ID: {product_id})")
+                                        self.my_products_log_signal.emit(f"⏭️ 제외된 상품 건너뛰기: {title[:30]}... (ID: {product_id})")
+                                        continue
+                                    
                                     # 상품명에 상품ID 추가
                                     title_with_id = f"{title} 商品ID: {product_id}"
                                 else:
@@ -5834,6 +5911,11 @@ class Main(QMainWindow):
                 QMessageBox.warning(self, "경고", "JSON 파일에 상품 정보가 없습니다.")
                 return
             
+            # excluded 필드가 없는 상품들에 기본값 추가
+            for product in products:
+                if 'excluded' not in product:
+                    product['excluded'] = False
+            
             # 테이블에 페이지네이션으로 표시
             self.display_my_products(products)
             
@@ -5850,6 +5932,108 @@ class Main(QMainWindow):
         except Exception as e:
             self.log_error(f"❌ JSON 파일 불러오기 오류: {str(e)}")
             QMessageBox.critical(self, "오류", f"JSON 파일 불러오기 실패:\n{str(e)}")
+    
+    def update_exclude_status(self):
+        """제외 상품 상태 라벨 업데이트"""
+        try:
+            count = len(self.excluded_product_ids)
+            if count == 0:
+                self.exclude_status_label.setText("📋 현재 제외된 상품: 0개")
+            else:
+                preview = ', '.join(self.excluded_product_ids[:3])
+                if count > 3:
+                    preview += f" 외 {count-3}개"
+                self.exclude_status_label.setText(f"📋 현재 제외된 상품: {count}개 ({preview})")
+        except Exception as e:
+            self.log_error(f"❌ 제외 상품 상태 업데이트 오류: {str(e)}")
+
+    def upload_exclude_ids(self):
+        """제외할 상품ID 엑셀 파일 업로드"""
+        try:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, 
+                "제외할 상품ID 엑셀 파일 선택", 
+                "", 
+                "Excel files (*.xlsx *.xls)"
+            )
+            
+            if not file_path:
+                return
+            
+            import pandas as pd
+            
+            # 엑셀 파일 읽기 (모든 컬럼을 문자열로)
+            df = pd.read_excel(file_path, dtype=str)
+            
+            # 상품ID 컬럼 찾기 (여러 가능한 컬럼명 시도)
+            id_column = None
+            possible_columns = ['상품ID', '상품 ID', 'product_id', 'ID', 'id', '제품ID']
+            
+            for col in possible_columns:
+                if col in df.columns:
+                    id_column = col
+                    break
+            
+            if id_column is None:
+                QMessageBox.warning(
+                    self, 
+                    "경고", 
+                    "엑셀 파일에서 상품ID 컬럼을 찾을 수 없습니다.\n\n지원하는 컬럼명: 상품ID, 상품 ID, product_id, ID, id, 제품ID"
+                )
+                return
+            
+            # 상품ID 추출 (빈 값 제외, 공백 제거)
+            product_ids = df[id_column].dropna().astype(str).str.strip().tolist()
+            
+            # 기존 제외 목록에 추가 (중복 제거)
+            self.excluded_product_ids = list(set(self.excluded_product_ids + product_ids))
+            
+            # 디버깅: 제외 목록 확인
+            print(f"🔍 업데이트된 제외 목록: {self.excluded_product_ids}")
+            print(f"🔍 13847425 포함 여부: {'13847425' in self.excluded_product_ids}")
+            
+            self.log_message(f"📤 제외할 상품ID {len(product_ids)}개 업로드 완료 (총 {len(self.excluded_product_ids)}개)")
+            self.log_message(f"📋 제외 상품ID: {', '.join(self.excluded_product_ids[:10])}{'...' if len(self.excluded_product_ids) > 10 else ''}")
+            
+            # 상태 라벨 업데이트
+            self.update_exclude_status()
+            
+            QMessageBox.information(
+                self, 
+                "업로드 완료", 
+                f"제외할 상품ID {len(product_ids)}개가 업로드되었습니다.\n\n총 제외 상품: {len(self.excluded_product_ids)}개"
+            )
+            
+        except Exception as e:
+            self.log_error(f"❌ 제외 상품ID 업로드 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"제외 상품ID 업로드 실패:\n{str(e)}")
+    
+    def clear_exclude_list(self):
+        """제외할 상품ID 목록 초기화"""
+        try:
+            if not self.excluded_product_ids:
+                QMessageBox.information(self, "알림", "제외할 상품ID 목록이 비어있습니다.")
+                return
+            
+            reply = QMessageBox.question(
+                self, 
+                "제외 목록 초기화", 
+                f"현재 {len(self.excluded_product_ids)}개의 제외 상품ID를 모두 삭제하시겠습니까?\n\n"
+                "이 작업은 되돌릴 수 없습니다.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                self.excluded_product_ids.clear()
+                self.log_message("🗑️ 제외할 상품ID 목록이 초기화되었습니다.")
+                
+                # 상태 라벨 업데이트
+                self.update_exclude_status()
+                
+                QMessageBox.information(self, "초기화 완료", "제외할 상품ID 목록이 초기화되었습니다.")
+            
+        except Exception as e:
+            self.log_error(f"❌ 제외 목록 초기화 오류: {str(e)}")
     
     def clear_price_table(self):
         """가격관리 테이블 초기화"""
@@ -5954,27 +6138,33 @@ class Main(QMainWindow):
                 # 행 높이 설정
                 self.price_table.setRowHeight(row, 50)
                 
+                # 제외 체크박스
+                exclude_checkbox = QCheckBox()
+                exclude_checkbox.setChecked(product.get('excluded', False))
+                exclude_checkbox.stateChanged.connect(lambda state, r=row: self.on_price_exclude_checkbox_changed(r, state))
+                self.price_table.setCellWidget(row, 0, exclude_checkbox)
+                
                 # 상품명
                 title_item = QTableWidgetItem(product['title'])
                 title_item.setToolTip(product['title'])
                 title_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                 title_item.setFlags(title_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                self.price_table.setItem(row, 0, title_item)
+                self.price_table.setItem(row, 1, title_item)
                 
                 # 현재가격
-                self.price_table.setItem(row, 1, QTableWidgetItem(product['current_price']))
+                self.price_table.setItem(row, 2, QTableWidgetItem(product['current_price']))
                 
                 # 최저가 (아직 분석 안됨)
-                self.price_table.setItem(row, 2, QTableWidgetItem("분석 필요"))
+                self.price_table.setItem(row, 3, QTableWidgetItem("분석 필요"))
                 
                 # 제안가 (아직 계산 안됨)
-                self.price_table.setItem(row, 3, QTableWidgetItem("계산 필요"))
-                
-                # 가격차이 (아직 계산 안됨)
                 self.price_table.setItem(row, 4, QTableWidgetItem("계산 필요"))
                 
+                # 가격차이 (아직 계산 안됨)
+                self.price_table.setItem(row, 5, QTableWidgetItem("계산 필요"))
+                
                 # 상태
-                self.price_table.setItem(row, 5, QTableWidgetItem(product['status']))
+                self.price_table.setItem(row, 6, QTableWidgetItem(product['status']))
                 
                 # 액션 버튼
                 action_widget = QWidget()
@@ -6055,26 +6245,60 @@ class Main(QMainWindow):
                 action_layout.addWidget(favorite_btn)
                 action_layout.addStretch()
                 
-                self.price_table.setCellWidget(row, 6, action_widget)
+                self.price_table.setCellWidget(row, 7, action_widget)
             
             # UI 업데이트 재개
             self.price_table.setUpdatesEnabled(True)
                 
         except Exception as e:
+            self.log_message(f"❌ 페이지 표시 오류: {str(e)}")
+    
+    def on_price_exclude_checkbox_changed(self, row, state):
+        """가격관리 테이블 제외 체크박스 상태 변경 처리"""
+        try:
+            # 실제 상품 인덱스 계산
+            actual_row = self.current_page * self.page_size + row
+            if actual_row < len(self.all_products):
+                self.all_products[actual_row]['excluded'] = (state == 2)  # 2 = Checked
+                self.save_current_products_to_json()
+                
+                status = "제외됨" if state == 2 else "포함됨"
+                product_name = self.all_products[actual_row].get('title', 'Unknown')
+                self.log_message(f"📝 가격관리 제외 설정: {product_name[:20]}... - {status}")
+                
+        except Exception as e:
+            self.log_message(f"제외 설정 오류: {str(e)}")
             self.price_table.setUpdatesEnabled(True)
             self.log_error(f"테이블 표시 오류: {str(e)}")
 
     def display_my_products(self, products):
-        """내 상품을 페이지네이션으로 표시"""
+        """내 상품을 페이지네이션으로 표시 (제외된 상품 필터링)"""
         try:
-            # 전체 상품 데이터 저장
-            self.all_products = products
+            # 제외된 상품 필터링
+            filtered_products = []
+            excluded_count = 0
+            
+            for product in products:
+                product_id = product.get('product_id', '')
+            
+                if str(product_id) in [str(x) for x in self.excluded_product_ids]:
+                    excluded_count += 1
+                    print(f"⏭️ 제외됨: {product.get('title', '')[:30]}... (ID: {product_id})")
+                    self.log_message(f"⏭️ 테이블에서 제외된 상품: {product.get('title', '')[:30]}... (ID: {product_id})")
+                else:
+                    filtered_products.append(product)
+            
+            # 전체 상품 데이터 저장 (필터링된 데이터)
+            self.all_products = filtered_products
+            
+            if excluded_count > 0:
+                self.log_message(f"🚫 총 {excluded_count}개 상품이 제외되어 테이블에 표시되지 않습니다.")
             
             # 페이지네이션 설정
-            self.total_pages = (len(products) + self.page_size - 1) // self.page_size
+            self.total_pages = (len(filtered_products) + self.page_size - 1) // self.page_size
             self.current_page = 0
             
-            self.log_message(f"📊 총 {len(products)}개 상품을 {self.page_size}개씩 {self.total_pages}페이지로 나누어 표시")
+            self.log_message(f"📊 총 {len(filtered_products)}개 상품을 {self.page_size}개씩 {self.total_pages}페이지로 나누어 표시")
             
             # 대용량 데이터 처리를 위한 지연 로딩
             if len(products) > 1000:
@@ -6403,6 +6627,13 @@ class Main(QMainWindow):
             
             for i, product in enumerate(current_page_products):
                 try:
+                    # 제외된 상품은 건너뛰기
+                    if product.get('excluded', False):
+                        product_name = product.get('title', '')
+                        self.my_products_log_signal.emit(f"⏭️ 제외된 상품 건너뛰기: {product_name}")
+                        product['status'] = '⏭️ 제외됨'
+                        continue
+                    
                     # 진행률 업데이트 (현재 페이지 기준)
                     self.update_price_progress_widget(i, len(current_page_products), f"페이지 {page_num+1} 분석 중: {i+1}/{len(current_page_products)}")
                     
@@ -6417,29 +6648,30 @@ class Main(QMainWindow):
                     lowest_price = self.search_buyma_lowest_price(product_name, product.get('brand', ''))
                     
                     if lowest_price and lowest_price > 0:
-                        # 제안가 계산
-                        suggested_price = max(lowest_price - discount, 0)
-                        price_difference = current_price_int - lowest_price
+                        # 제안가 계산 (주력상품과 동일하게)
+                        suggested_price = lowest_price - discount  # max() 제거
+                        price_difference = suggested_price - current_price_int  # 제안가 - 현재가
                         
                         # 상품 데이터 업데이트
                         product['lowest_price'] = lowest_price
                         product['suggested_price'] = suggested_price
                         product['price_difference'] = price_difference
                         
-                        # 수정 필요 여부 판단
-                        if price_difference == 0:
-                            # 가격차이가 정확히 0이면 수정 불필요
-                            product['status'] = '✅ 현재가 적정 (동일가)'
-                            product['needs_update'] = False
-                        elif price_difference < 0:
-                            # 내 상품이 더 저렴함 - 수정 불필요
+                        # 수정 필요 여부 판단 (간소화된 로직)
+                        if current_price_int == lowest_price:
+                            # 현재가격 == 경쟁사 최저가면 현재가 적정
                             product['status'] = '✅ 현재가 적정 (최저가)'
                             product['needs_update'] = False
-                        elif price_difference > min_margin:
-                            # 가격차이가 최소마진보다 크면 과도한 손실 예상
+                        elif price_difference >= 0:
+                            # 가격을 올리거나 유지해야 하는 경우 (이익 증가 또는 유지)
+                            product['status'] = '💰 가격 수정 필요'
+                            product['needs_update'] = True
+                        elif abs(price_difference) > min_margin:
+                            # 가격을 내려야 하는데 손실이 최소마진보다 큰 경우
                             product['status'] = f'⚠️ 손실 예상 ({price_difference:+,}엔)'
                             product['needs_update'] = False
                         else:
+                            # 가격을 내려야 하지만 손실이 최소마진 이내인 경우
                             product['status'] = '💰 가격 수정 필요'
                             product['needs_update'] = True
                         
@@ -6491,36 +6723,44 @@ class Main(QMainWindow):
             
             for row, product in enumerate(current_page_products):
                 try:
-                    # 상품명
-                    self.price_table.setItem(row, 0, QTableWidgetItem(product.get('title', '')))
+                    # 제외 체크박스 (0번 컬럼)
+                    exclude_checkbox = QCheckBox()
+                    exclude_checkbox.setChecked(product.get('excluded', False))
+                    exclude_checkbox.stateChanged.connect(lambda state, r=row: self.on_price_exclude_checkbox_changed(r, state))
+                    self.price_table.setCellWidget(row, 0, exclude_checkbox)
                     
-                    # 현재가격
-                    self.price_table.setItem(row, 1, QTableWidgetItem(product.get('current_price', '')))
+                    # 상품명 (1번 컬럼)
+                    title_item = QTableWidgetItem(product.get('title', ''))
+                    title_item.setToolTip(product.get('title', ''))
+                    self.price_table.setItem(row, 1, title_item)
                     
-                    # 최저가
+                    # 현재가격 (2번 컬럼)
+                    self.price_table.setItem(row, 2, QTableWidgetItem(product.get('current_price', '')))
+                    
+                    # 최저가 (3번 컬럼)
                     lowest_price = product.get('lowest_price', 0)
                     if lowest_price > 0:
-                        self.price_table.setItem(row, 2, QTableWidgetItem(f"¥{lowest_price:,}"))
+                        self.price_table.setItem(row, 3, QTableWidgetItem(f"¥{lowest_price:,}"))
                     else:
-                        self.price_table.setItem(row, 2, QTableWidgetItem("분석 중..."))
+                        self.price_table.setItem(row, 3, QTableWidgetItem("분석 중..."))
                     
-                    # 제안가
+                    # 제안가 (4번 컬럼)
                     suggested_price = product.get('suggested_price', 0)
                     if suggested_price > 0:
-                        self.price_table.setItem(row, 3, QTableWidgetItem(f"¥{suggested_price:,}"))
+                        self.price_table.setItem(row, 4, QTableWidgetItem(f"¥{suggested_price:,}"))
                     else:
-                        self.price_table.setItem(row, 3, QTableWidgetItem("계산 중..."))
+                        self.price_table.setItem(row, 4, QTableWidgetItem("계산 중..."))
                     
-                    # 가격차이
+                    # 가격차이 (5번 컬럼)
                     price_difference = product.get('price_difference', 0)
                     if price_difference != 0:
                         if price_difference > 0:
                             margin_text = f"+ ¥{price_difference:,} (비쌈)"
                         else:
                             margin_text = f"- ¥ {abs(price_difference):,} (저렴)"
-                        self.price_table.setItem(row, 4, QTableWidgetItem(margin_text))
+                        self.price_table.setItem(row, 5, QTableWidgetItem(margin_text))
                     else:
-                        self.price_table.setItem(row, 4, QTableWidgetItem("-"))
+                        self.price_table.setItem(row, 5, QTableWidgetItem("-"))
                     
                     # 상태
                     status = product.get('status', '분석 중...')
@@ -6534,7 +6774,7 @@ class Main(QMainWindow):
                     elif "실패" in status:
                         status_item.setForeground(QBrush(QColor("#e74c3c")))  # 빨간색
                     
-                    self.price_table.setItem(row, 5, status_item)
+                    self.price_table.setItem(row, 6, status_item)
                     
                 except Exception as e:
                     continue
@@ -11056,6 +11296,18 @@ class Main(QMainWindow):
                         duplicate_count += 1
                         continue
                     
+                    # 제외 설정 가져오기 (엑셀에 '제외' 컬럼이 있으면)
+                    is_excluded = False
+                    if '제외' in df.columns:
+                        exclude_value = row.get('제외', '')
+                        # NaN 값 처리
+                        if pd.isna(exclude_value):
+                            is_excluded = False
+                        else:
+                            # True, 1, 1.0, '1', 'Y', 'y', '예' 등을 True로 처리
+                            if str(exclude_value).lower() in ['true', '1', '1.0', 'y', '예', 'yes'] or exclude_value == 1 or exclude_value == 1.0:
+                                is_excluded = True
+                    
                     # 주력상품 데이터 생성 (기본값 설정)
                     favorite_product = {
                         'name': product_name,
@@ -11067,7 +11319,8 @@ class Main(QMainWindow):
                         'status': '분석 필요',
                         'last_checked': '',
                         'needs_update': False,
-                        'url': f"https://www.buyma.com/item/{product_id}/"
+                        'url': f"https://www.buyma.com/item/{product_id}/",
+                        'excluded': is_excluded  # 제외 설정 추가
                     }
                     
                     self.favorite_products.append(favorite_product)
@@ -11709,6 +11962,12 @@ class Main(QMainWindow):
             
             for i, product in enumerate(self.favorite_products):
                 try:
+                    # 제외된 상품은 건너뛰기
+                    if product.get('excluded', False):
+                        product_name = product.get('name', '')
+                        self.log_message(f"⏭️ 제외된 상품 건너뛰기: {product_name} ({i+1}/{len(self.favorite_products)})")
+                        product['status'] = '⏭️ 제외됨'
+                        continue
                     
                     product_name = product.get('name', '')
                     current_price = product.get('current_price', 0)
@@ -11725,15 +11984,18 @@ class Main(QMainWindow):
                         # 가격차이 계산 (제안가 - 현재가)
                         price_diff = suggested_price - current_price
                         
-                        # 상태 결정 (가격차이 기준)
+                        # 상태 결정 (올바른 로직)
                         if price_diff == 0:
                             # 가격차이가 정확히 0이면 수정 불필요
                             status = "✅ 현재가 적정 (동일가)"
-                        elif price_diff > min_margin:
-                            # 가격차이가 +설정값보다 크면 (예: +7000 > +500)
+                        elif price_diff > 0:
+                            # 가격을 올려야 하는 경우 (이익 증가)
+                            status = "💰 가격 수정 필요"
+                        elif abs(price_diff) > min_margin:
+                            # 가격을 내려야 하는데 손실이 최소마진보다 큰 경우
                             status = f"⚠️ 손실 예상 ({price_diff:+,}엔)"
                         else:
-                            # 가격차이가 설정값 이내면
+                            # 가격을 내려야 하지만 손실이 최소마진 이내인 경우
                             status = "💰 가격 수정 필요"
                         
                         # 상품 데이터 업데이트 (가격차이 통일)
@@ -11923,10 +12185,16 @@ class Main(QMainWindow):
             self.favorite_table.setRowCount(len(self.favorite_products))
             
             for row, product in enumerate(self.favorite_products):
+                # 제외 체크박스
+                exclude_checkbox = QCheckBox()
+                exclude_checkbox.setChecked(product.get('excluded', False))
+                exclude_checkbox.stateChanged.connect(lambda state, r=row: self.on_exclude_checkbox_changed(r, state))
+                self.favorite_table.setCellWidget(row, 0, exclude_checkbox)
+                
                 # 상품명
                 name_item = QTableWidgetItem(product.get('name', ''))
                 name_item.setToolTip(product.get('name', ''))
-                self.favorite_table.setItem(row, 0, name_item)
+                self.favorite_table.setItem(row, 1, name_item)
                 
                 # 현재가격
                 current_price = product.get('current_price', 0)
@@ -11939,23 +12207,23 @@ class Main(QMainWindow):
                         current_price = 0
                 
                 if current_price > 0:
-                    self.favorite_table.setItem(row, 1, QTableWidgetItem(f"¥{current_price:,}"))
+                    self.favorite_table.setItem(row, 2, QTableWidgetItem(f"¥{current_price:,}"))
                 else:
-                    self.favorite_table.setItem(row, 1, QTableWidgetItem("-"))
+                    self.favorite_table.setItem(row, 2, QTableWidgetItem("-"))
                 
                 # 경쟁사 최저가 → 최저가
                 lowest_price = product.get('lowest_price', 0)
                 if lowest_price > 0:
-                    self.favorite_table.setItem(row, 2, QTableWidgetItem(f"{lowest_price:,}엔"))
+                    self.favorite_table.setItem(row, 3, QTableWidgetItem(f"{lowest_price:,}엔"))
                 else:
-                    self.favorite_table.setItem(row, 2, QTableWidgetItem("-"))
+                    self.favorite_table.setItem(row, 3, QTableWidgetItem("-"))
                 
                 # 제안가격 → 제안가
                 suggested_price = product.get('suggested_price', 0)
                 if suggested_price > 0:
-                    self.favorite_table.setItem(row, 3, QTableWidgetItem(f"{suggested_price:,}엔"))
+                    self.favorite_table.setItem(row, 4, QTableWidgetItem(f"{suggested_price:,}엔"))
                 else:
-                    self.favorite_table.setItem(row, 3, QTableWidgetItem("-"))
+                    self.favorite_table.setItem(row, 4, QTableWidgetItem("-"))
                 
                 # 가격차이 (price_difference 키 사용)
                 price_diff = product.get('price_difference', 0)
@@ -11968,9 +12236,9 @@ class Main(QMainWindow):
                         diff_text = f"{price_diff:,}엔"
                         diff_item = QTableWidgetItem(diff_text)
                         diff_item.setForeground(QBrush(QColor("red")))   # 음수는 빨간색
-                    self.favorite_table.setItem(row, 4, diff_item)
+                    self.favorite_table.setItem(row, 5, diff_item)
                 else:
-                    self.favorite_table.setItem(row, 4, QTableWidgetItem("-"))
+                    self.favorite_table.setItem(row, 5, QTableWidgetItem("-"))
                 
                 # 상태
                 status = product.get('status', '확인 필요')
@@ -11984,7 +12252,7 @@ class Main(QMainWindow):
                 elif '⚠️ 손실 예상' in status:
                     status_item.setForeground(QBrush(QColor("#dc3545")))  # 빨간색 (손실)
                 
-                self.favorite_table.setItem(row, 5, status_item)
+                self.favorite_table.setItem(row, 6, status_item)
                 
                 # 액션 버튼
                 action_widget = QWidget()
@@ -12011,7 +12279,24 @@ class Main(QMainWindow):
                 delete_btn.clicked.connect(lambda checked, r=row: self.delete_favorite_product(r))
                 action_layout.addWidget(delete_btn)
                 
-                self.favorite_table.setCellWidget(row, 6, action_widget)
+                self.favorite_table.setCellWidget(row, 7, action_widget)
+                
+        except Exception as e:
+            self.log_message(f"주력상품 테이블 업데이트 오류: {str(e)}")
+    
+    def on_exclude_checkbox_changed(self, row, state):
+        """제외 체크박스 상태 변경 처리"""
+        try:
+            if row < len(self.favorite_products):
+                self.favorite_products[row]['excluded'] = (state == 2)  # 2 = Checked
+                self.save_favorite_products_auto()
+                
+                status = "제외됨" if state == 2 else "포함됨"
+                product_name = self.favorite_products[row].get('name', 'Unknown')
+                self.log_message(f"📝 주력상품 제외 설정: {product_name[:20]}... - {status}")
+                
+        except Exception as e:
+            self.log_message(f"제외 설정 오류: {str(e)}")
             
             # 통계 업데이트
             self.update_favorite_stats()
@@ -12163,6 +12448,13 @@ class Main(QMainWindow):
             
             for i, product in enumerate(self.favorite_products):
                 try:
+                    # 제외된 상품은 건너뛰기
+                    if product.get('excluded', False):
+                        product_name = product.get('name', '')
+                        self.my_products_log_signal.emit(f"⏭️ 제외된 상품 건너뛰기: {product_name} ({i+1}/{len(self.favorite_products)})")
+                        product['status'] = '⏭️ 제외됨'
+                        continue
+                    
                     product_name = product.get('name', '')
                     current_price = product.get('current_price', 0)
                     
@@ -12182,7 +12474,7 @@ class Main(QMainWindow):
                     # 1. 먼저 본인 상품에서 최신 현재가 조회
                     product_id = product.get('product_id', '')
                     self.my_products_log_signal.emit(f"📋 본인 상품 현재가 조회: {product_name}")
-                    updated_current_price = self.get_current_price_from_buyma(product_name, product_id)
+                    updated_current_price = self.get_current_price_from_buyma(product_name, product_id=product_id)
                     if updated_current_price and updated_current_price > 0:
                         current_price = updated_current_price
                         product['current_price'] = current_price
@@ -12194,29 +12486,34 @@ class Main(QMainWindow):
                     competitor_price = self.get_buyma_lowest_price_for_favorite(product_name, brand_name=product.get('brand', ''))
                     
                     if competitor_price != None and competitor_price > 0:
-                        # 현재가와 최저가 비교
-                        if current_price <= competitor_price:
-                            status = "✅ 현재가 적정"
+                        # 내 현재가와 경쟁사 최저가가 같으면 수정 불필요 (이미 최저가)
+                        if current_price == competitor_price:
+                            status = "✅ 현재가 적정 (최저가)"
                             needs_update = False
                             suggested_price = current_price
                             price_diff = 0
                         else:
-                            # 현재가가 최저가보다 높으면 제안가 계산
+                            # 제안가 계산 (경쟁사 최저가 - 할인금액)
                             suggested_price = competitor_price - discount_amount
-                            price_diff = current_price - competitor_price
+                            price_diff = suggested_price - current_price  # 제안가 - 현재가
                             
-                            # 상태 결정 (가격차이 기준)
-                            # 상태 결정 (가격차이 기준)
-                            if price_diff == 0:
-                                # 가격차이가 정확히 0이면 수정 불필요
-                                status = "✅ 현재가 적정 (동일가)"
-                                needs_update = False
-                            elif price_diff > min_margin:
-                                status = f"⚠️ 손실 예상 ({price_diff:+,}엔)"
-                                needs_update = False
-                            else:
-                                status = "💰 가격 수정 필요"
-                                needs_update = True
+                        # 상태 결정 (가격관리 탭과 동일한 로직)
+                        if current_price == competitor_price:
+                            # 현재가격 == 경쟁사 최저가면 현재가 적정
+                            status = "✅ 현재가 적정 (최저가)"
+                            needs_update = False
+                        elif price_diff >= 0:
+                            # 가격을 올리거나 유지해야 하는 경우 (이익 증가 또는 유지)
+                            status = "💰 가격 수정 필요"
+                            needs_update = True
+                        elif abs(price_diff) > min_margin:
+                            # 가격을 내려야 하는데 손실이 최소마진보다 큰 경우
+                            status = f"⚠️ 손실 예상 ({price_diff:+,}엔)"
+                            needs_update = False
+                        else:
+                            # 가격을 내려야 하지만 손실이 최소마진 이내인 경우
+                            status = "💰 가격 수정 필요"
+                            needs_update = True
                         
                         # 결과 업데이트
                         product['lowest_price'] = competitor_price
@@ -12463,6 +12760,8 @@ class Main(QMainWindow):
             if not self.shared_driver:
                 self.log_message("❌ 브라우저가 초기화되지 않았습니다.")
                 return None
+            
+            print("🔍 현재가 조회 시작:", product_id)
             
             # 상품ID가 있으면 ID로 검색, 없으면 상품명으로 검색
             if product_id:
@@ -14328,13 +14627,31 @@ https://www.buyma.com/contents/safety/anshin.html
             # 배치 처리로 데이터 입력
             for row, product in enumerate(products):
                 try:
-                    # 기본 상품 정보
-                    self.price_table.setItem(row, 0, QTableWidgetItem(product.get('title', '')))
-                    self.price_table.setItem(row, 1, QTableWidgetItem(product.get('current_price', '')))
-                    self.price_table.setItem(row, 2, QTableWidgetItem('분석 필요'))
-                    self.price_table.setItem(row, 3, QTableWidgetItem('계산 필요'))
-                    self.price_table.setItem(row, 4, QTableWidgetItem('-'))
-                    self.price_table.setItem(row, 5, QTableWidgetItem('대기 중'))
+                    # 제외 체크박스 (0번 컬럼)
+                    exclude_checkbox = QCheckBox()
+                    exclude_checkbox.setChecked(product.get('excluded', False))
+                    exclude_checkbox.stateChanged.connect(lambda state, r=row: self.on_price_exclude_checkbox_changed(r, state))
+                    self.price_table.setCellWidget(row, 0, exclude_checkbox)
+                    
+                    # 상품명 (1번 컬럼)
+                    title_item = QTableWidgetItem(product.get('title', ''))
+                    title_item.setToolTip(product.get('title', ''))
+                    self.price_table.setItem(row, 1, title_item)
+                    
+                    # 현재가격 (2번 컬럼)
+                    self.price_table.setItem(row, 2, QTableWidgetItem(product.get('current_price', '')))
+                    
+                    # 최저가 (3번 컬럼)
+                    self.price_table.setItem(row, 3, QTableWidgetItem('분석 필요'))
+                    
+                    # 제안가 (4번 컬럼)
+                    self.price_table.setItem(row, 4, QTableWidgetItem('계산 필요'))
+                    
+                    # 가격차이 (5번 컬럼)
+                    self.price_table.setItem(row, 5, QTableWidgetItem('-'))
+                    
+                    # 상태 (6번 컬럼)
+                    self.price_table.setItem(row, 6, QTableWidgetItem('대기 중'))
                     
                     # 액션 버튼은 나중에 추가 (성능 최적화)
                     if row < 50:  # 처음 50개만 즉시 버튼 추가
@@ -14414,7 +14731,7 @@ https://www.buyma.com/contents/safety/anshin.html
             action_layout.addStretch()  # 왼쪽 정렬
             
             action_widget.setLayout(action_layout)
-            self.price_table.setCellWidget(row, 6, action_widget)
+            self.price_table.setCellWidget(row, 7, action_widget)
             
         except Exception as e:
             self.log_message(f"❌ 액션 버튼 추가 오류 (행 {row}): {str(e)}")
