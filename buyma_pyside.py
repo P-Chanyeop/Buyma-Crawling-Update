@@ -6832,7 +6832,7 @@ class Main(QMainWindow):
             self.my_products_log_signal.emit(f"❌ 페이지 수정 오류: {str(e)}")
             return 0
 
-    def update_buyma_product_price_with_id(self, product_name, new_price, product_id, is_auto_mode=False, show_dialog=True):
+    def update_buyma_product_price_with_id(self, product_name, new_price, product_id, is_auto_mode=False, show_dialog=True, before_update_flag=False):
         """BUYMA에서 상품 가격 수정 (상품ID 직접 사용)"""
         try:
             # 1. BUYMA 상품 수정 페이지 접속 (상품ID 사용)
@@ -6860,25 +6860,50 @@ class Main(QMainWindow):
                 return False
             
             # 3. 현재 가격 확인
-            try:
-                price_input = WebDriverWait(self.shared_driver, 10).until(
-                    EC.presence_of_element_located((By.NAME, "item_price"))
-                )
-                current_price_on_page = int(price_input.get_attribute("value") or "0")
-                self.log_message(f"📋 BUYMA 페이지 현재 가격: ¥{current_price_on_page:,}")
-            except Exception as e:
-                self.log_error(f"현재 가격을 확인할 수 없습니다: {str(e)}")
-                current_price_on_page = 0
-            
-            # 4. 가격 입력
-            try:
-                price_input.clear()
-                price_input.send_keys(str(new_price))
-                self.log_message(f"💰 새 가격 입력: ¥{new_price:,}")
-                time.sleep(1)
-            except Exception as e:
-                self.log_error(f"가격 입력 실패: {str(e)}")
-                return False
+            if before_update_flag:
+                try:
+                    price_input = WebDriverWait(self.shared_driver, 10).until(
+                        EC.presence_of_element_located((By.NAME, "item_price"))
+                    )
+                    current_price_on_page = int(price_input.get_attribute("value") or "0")
+                    self.log_message(f"📋 BUYMA 페이지 현재 가격: ¥{current_price_on_page:,}")
+                except Exception as e:
+                    self.log_error(f"현재 가격을 확인할 수 없습니다: {str(e)}")
+                    current_price_on_page = 0
+                
+                # 4. 가격 입력
+                try:
+                    # 현재 할인 금액 불러오기
+                    discount_amount = self.discount_amount.value()
+                    discount_amount = discount_amount if discount_amount > 0 else 0
+                    new_price = int(current_price_on_page) - int(discount_amount)
+                    price_input.clear()
+                    price_input.send_keys(str(new_price))
+                    self.log_message(f"💰 새 가격 입력: ¥{new_price:,}")
+                    time.sleep(1)
+                except Exception as e:
+                    self.log_error(f"가격 입력 실패: {str(e)}")
+                    return False
+            else:
+                try:
+                    price_input = WebDriverWait(self.shared_driver, 10).until(
+                        EC.presence_of_element_located((By.NAME, "item_price"))
+                    )
+                    current_price_on_page = int(price_input.get_attribute("value") or "0")
+                    self.log_message(f"📋 BUYMA 페이지 현재 가격: ¥{current_price_on_page:,}")
+                except Exception as e:
+                    self.log_error(f"현재 가격을 확인할 수 없습니다: {str(e)}")
+                    current_price_on_page = 0
+                
+                # 4. 가격 입력
+                try:
+                    price_input.clear()
+                    price_input.send_keys(str(new_price))
+                    self.log_message(f"💰 새 가격 입력: ¥{new_price:,}")
+                    time.sleep(1)
+                except Exception as e:
+                    self.log_error(f"가격 입력 실패: {str(e)}")
+                    return False
             
             # 5. 설정하기 버튼 클릭
             try:
@@ -7542,26 +7567,11 @@ class Main(QMainWindow):
             if "商品ID" in product_name:
                 search_name = product_name.split("商品ID")[0].strip()
             
-            # 【送料0/関税0】, 【送料無料】 등 불필요한 태그 제거
-            search_name = re.sub(r'【[^】]*】', '', search_name).strip()
+            # ★ 별모양만 제거
+            search_name = search_name.replace('★', '').strip()
             
-            # 슬래시(/) 제거 - BUYMA 검색에서 구분자로 인식되어 문제 발생
-            search_name = search_name.replace('/', ' ').strip()
-            
-            # 추가 정리 (특수문자 제거, 영어와 숫자만 남기기)
-            search_name = re.sub(r'[^a-zA-Z0-9\s]', '', search_name).strip()
-            
-            # # 숫자가 포함된 단어 제거 후 영어만 남기기
-            # import re
-            # # 1단계: 숫자가 포함된 단어 전체 제거 (M0455, A1234, bag123 등)
-            # search_name = re.sub(r'\b\w*\d+\w*\b', '', search_name)
-            # # 2단계: 영어와 공백만 남기기 (숫자 완전 제거)
-            # search_name = re.sub(r'[^a-zA-Z\s]', '', search_name)
-            # 3단계: 연속된 공백을 하나로 정리
+            # 연속된 공백을 하나로 정리
             search_name = re.sub(r'\s+', ' ', search_name).strip()
-            
-            # 브랜드명 정리
-            # search_name = search_name.replace(brand_name, "").strip()
             
             self.log_message(f"🔍 검색어: '{search_name}'")
             
@@ -11705,41 +11715,77 @@ class Main(QMainWindow):
                 QMessageBox.warning(self, "경고", "등록된 주력 상품이 없습니다.\n먼저 주력 상품을 추가해주세요.")
                 return
             
-            # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
-            # self.switch_to_monitoring_tab()
-            # self.set_tabs_enabled(False)
+            # 주력상품 사전 할인 여부 확인
+            reply = QMessageBox.question(
+                self, 
+                "주력상품 사전 할인", 
+                "주력상품들을 먼저 설정 금액만큼 할인하시겠습니까?\n\n"
+                "✅ Yes: 주력상품 할인 → 전체 가격분석\n"
+                "❌ No: 바로 전체 가격분석 시작",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
             
             # UI 상태 변경
             self.fav_start_analysis_btn.setEnabled(False)
             self.fav_start_analysis_btn.setText("🔄 진행 중...")
-            
-            # 진행률 위젯 표시 (2단계 처리이므로 total을 *2로 설정)
-            self.price_progress_widget.update_progress(
-                0, 
-                len(self.favorite_products) * 2,  # 2단계 처리이므로 *2
-                "⭐ 주력상품 통합 처리", 
-                f"총 {len(self.favorite_products)}개 상품 처리 예정 (2단계)"
-            )
-            
-            self.log_message(f"🚀 주력상품 가격확인-가격수정 통합 처리 시작: {len(self.favorite_products)}개")
             
             # 설정값 가져오기
             discount_amount = self.fav_discount_amount.value()
             min_margin = self.fav_min_margin.value()
             is_auto_mode = self.fav_auto_mode.isChecked()
             
+            before_update_flag = False
+            if reply == QMessageBox.StandardButton.Yes:
+                # 사전 할인 실행
+                self.log_message(f"🔄 주력상품 사전 할인 시작: {discount_amount}엔 차감")
+                
+                for product in self.favorite_products:
+                    if product.get('excluded', False):
+                        continue
+                        
+                    product_name = product.get('name', '')
+                    current_price = product.get('current_price', 0)
+                    product_id = product.get('product_id', '')
+                    
+                    if isinstance(current_price, str):
+                        price_numbers = re.findall(r'[\d,]+', current_price)
+                        if price_numbers:
+                            current_price = int(price_numbers[0].replace(',', ''))
+                    
+                    new_price = current_price - discount_amount
+                    if new_price < 100:
+                        new_price = 100
+                    
+                    self.log_message(f"💰 할인 적용: {product_name} ({current_price:,}엔 → {new_price:,}엔)")
+                    
+                    if product_id:
+                        # 가격 선 업데이트 플래그
+                        before_update_flag = True
+                        success = self.update_buyma_product_price_with_id(product_name, new_price, product_id, True, False, before_update_flag)
+                        if success:
+                            product['current_price'] = new_price
+                            self.log_message(f"✅ 할인 완료: {product_name}")
+                        else:
+                            self.log_message(f"❌ 할인 실패: {product_name}")
+                
+                self.log_message("✅ 주력상품 사전 할인 완료, 이제 전체 가격분석 시작")
+            
+            # 기존 로직 실행
+            self.price_progress_widget.update_progress(
+                0, 
+                len(self.favorite_products) * 2,
+                "⭐ 주력상품 통합 처리", 
+                f"총 {len(self.favorite_products)}개 상품 처리 예정"
+            )
+            
+            self.log_message(f"🚀 주력상품 가격확인-가격수정 통합 처리 시작: {len(self.favorite_products)}개")
             self.log_message(f"🔧 설정: 할인 {discount_amount}엔, 최소마진 {min_margin}엔, 모드: {'🤖 자동' if is_auto_mode else '👤 수동'}")
             
-            # 별도 스레드에서 통합 처리 실행
-            import threading
-            
-            # QTimer로 주력상품 통합 처리 실행
             QTimer.singleShot(0, lambda: self.run_favorite_integrated_process(discount_amount, min_margin, is_auto_mode))
             
         except Exception as e:
             self.log_message(f"❌ 주력상품 통합 처리 시작 오류: {str(e)}")
-            self.progress_widget.set_task_error("주력상품 통합 처리 오류", str(e))
-            # UI 상태 복원
             self.fav_start_analysis_btn.setEnabled(True)
             self.fav_start_analysis_btn.setText("🚀 가격확인-가격수정 시작")
     
@@ -12835,31 +12881,11 @@ class Main(QMainWindow):
             if "商品ID" in product_name:
                 search_name = product_name.split("商品ID")[0].strip()
             
-            # 【送料0/関税0】, 【送料無料】 등 불필요한 태그 제거
-            search_name = re.sub(r'【[^】]*】', '', search_name).strip()
+            # ★ 별모양만 제거
+            search_name = search_name.replace('★', '').strip()
             
-            # 슬래시(/) 제거 - BUYMA 검색에서 구분자로 인식되어 문제 발생
-            search_name = search_name.replace('/', ' ').strip()
-            
-            # 추가 정리 (특수문자 제거, 영어와 숫자만 남기기)
-            search_name = re.sub(r'[^a-zA-Z0-9\s]', '', search_name).strip()
-            
-            # 숫자가 포함된 단어 제거 후 영어만 남기기
-            # import re
-            # # 1단계: 숫자가 포함된 단어 전체 제거 (M0455, A1234, bag123 등)
-            # search_name = re.sub(r'\b\w*\d+\w*\b', '', search_name)
-            # # 2단계: 영어와 공백만 남기기 (숫자 완전 제거)
-            # search_name = re.sub(r'[^a-zA-Z\s]', '', search_name)
-            # # 3단계: 연속된 공백을 하나로 정리
-            # search_name = re.sub(r'\s+', ' ', search_name).strip()
-            
-            # 브랜드명 정리
-            # search_name = search_name.replace(brand_name, "").strip()
-            
-            self.log_message(f"🔍 검색어: '{search_name}'")
-            
-            # 브랜드명 제거 
-            # search_name = search_name.replace(brand_name, "").strip()
+            # 연속된 공백을 하나로 정리
+            search_name = re.sub(r'\s+', ' ', search_name).strip()
             
             self.log_message(f"🔍 주력상품 검색어: '{search_name}'")
             
