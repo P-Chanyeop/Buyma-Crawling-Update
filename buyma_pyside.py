@@ -2241,33 +2241,50 @@ class Main(QMainWindow):
         settings_group = QGroupBox("⚙️ 가격 관리 설정")
         settings_layout = QGridLayout(settings_group)
         
-        # 할인 금액 설정
-        settings_layout.addWidget(QLabel("할인 금액:"), 0, 0)
+        # 전체 상품 할인 체크박스
+        self.fav_enable_pre_discount = QCheckBox("🔽 전체 상품 사전 할인 활성화")
+        self.fav_enable_pre_discount.setChecked(False)
+        self.fav_enable_pre_discount.setToolTip("체크하면 크롤링 전에 전체 상품을 설정 금액만큼 할인합니다")
+        self.fav_enable_pre_discount.setStyleSheet("font-weight: bold; color: #e74c3c;")
+        settings_layout.addWidget(self.fav_enable_pre_discount, 0, 0, 1, 4)
+        
+        # 크롤링 전 할인 금액 설정
+        settings_layout.addWidget(QLabel("크롤링 전 할인:"), 1, 0)
+        self.fav_pre_discount_amount = QSpinBox()
+        self.fav_pre_discount_amount.setRange(0, 10000)
+        self.fav_pre_discount_amount.setValue(500)
+        self.fav_pre_discount_amount.setSuffix(" 엔")
+        self.fav_pre_discount_amount.setToolTip("크롤링 전에 전체 상품에서 차감할 금액")
+        self.fav_pre_discount_amount.setEnabled(False)  # 기본적으로 비활성화
+        settings_layout.addWidget(self.fav_pre_discount_amount, 1, 1)
+        
+        # 크롤링 후 할인 금액 설정
+        settings_layout.addWidget(QLabel("크롤링 후 할인:"), 1, 2)
         self.fav_discount_amount = QSpinBox()
         self.fav_discount_amount.setRange(0, 10000)
         self.fav_discount_amount.setValue(100)
         self.fav_discount_amount.setSuffix(" 엔")
         self.fav_discount_amount.setToolTip("경쟁사 최저가보다 얼마나 할인할지 설정")
-        settings_layout.addWidget(self.fav_discount_amount, 0, 1)
+        settings_layout.addWidget(self.fav_discount_amount, 1, 3)
         
         # 최소 마진 설정
-        settings_layout.addWidget(QLabel("최소 마진:"), 0, 2)
+        settings_layout.addWidget(QLabel("최소 마진:"), 2, 0)
         self.fav_min_margin = QSpinBox()
         self.fav_min_margin.setRange(0, 50000)
         self.fav_min_margin.setValue(500)
         self.fav_min_margin.setSuffix(" 엔")
         self.fav_min_margin.setToolTip("보장할 최소 마진 금액")
-        settings_layout.addWidget(self.fav_min_margin, 0, 3)
+        settings_layout.addWidget(self.fav_min_margin, 2, 1)
         
         # 손실 예상 상품 자동 제외
         self.fav_exclude_loss = QCheckBox("손실 예상 상품 자동 제외")
         self.fav_exclude_loss.setChecked(True)
         self.fav_exclude_loss.setToolTip("마진이 부족한 상품을 자동으로 제외")
-        settings_layout.addWidget(self.fav_exclude_loss, 1, 0, 1, 2)
+        settings_layout.addWidget(self.fav_exclude_loss, 2, 2, 1, 2)
         
         # 가격 관리 모드
         mode_label = QLabel("가격 관리 모드:")
-        settings_layout.addWidget(mode_label, 1, 2)
+        settings_layout.addWidget(mode_label, 3, 0)
         
         self.fav_price_mode_group = QButtonGroup()
         self.fav_auto_mode = QRadioButton("🤖 자동 모드")
@@ -2276,13 +2293,51 @@ class Main(QMainWindow):
         self.fav_auto_mode.setToolTip("조건 만족 시 즉시 가격 수정")
         self.fav_manual_mode.setToolTip("분석 결과 검토 후 수정")
         
+        # 라디오 버튼 스타일 추가
+        radio_style = """
+            QRadioButton {
+                font-size: 12px;
+                font-weight: bold;
+                color: #2c3e50;
+                padding: 5px;
+                font-family: '맑은 고딕';
+            }
+            QRadioButton::indicator {
+                width: 16px;
+                height: 16px;
+            }
+            QRadioButton::indicator:unchecked {
+                border: 2px solid #bdc3c7;
+                border-radius: 8px;
+                background-color: white;
+            }
+            QRadioButton::indicator:checked {
+                border: 2px solid #3498db;
+                border-radius: 8px;
+                background-color: #3498db;
+            }
+        """
+        self.fav_auto_mode.setStyleSheet(radio_style)
+        self.fav_manual_mode.setStyleSheet(radio_style)
+        
         self.fav_price_mode_group.addButton(self.fav_auto_mode)
         self.fav_price_mode_group.addButton(self.fav_manual_mode)
         
         mode_layout = QHBoxLayout()
         mode_layout.addWidget(self.fav_auto_mode)
         mode_layout.addWidget(self.fav_manual_mode)
-        settings_layout.addLayout(mode_layout, 1, 3)
+        settings_layout.addLayout(mode_layout, 3, 1, 1, 3)
+        
+        # 체크박스 상태 변경 시 할인 금액 입력 활성화/비활성화
+        def toggle_pre_discount():
+            enabled = self.fav_enable_pre_discount.isChecked()
+            self.fav_pre_discount_amount.setEnabled(enabled)
+            if enabled:
+                self.fav_pre_discount_amount.setStyleSheet("background-color: #fff3cd; border: 2px solid #ffc107;")
+            else:
+                self.fav_pre_discount_amount.setStyleSheet("")
+        
+        self.fav_enable_pre_discount.toggled.connect(toggle_pre_discount)
         
         layout.addWidget(settings_group)
         
@@ -5563,7 +5618,7 @@ class Main(QMainWindow):
             self.log_message(f"📁 상품 정보를 {json_filename} 파일로 저장합니다.")
             
             # 테스트용: 22페이지부터 시작
-            page_number = 29
+            page_number = 1
             total_products = 0
             
             # JSON 파일 초기화
@@ -6873,13 +6928,13 @@ class Main(QMainWindow):
                 
                 # 4. 가격 입력
                 try:
-                    # 현재 할인 금액 불러오기
-                    discount_amount = self.discount_amount.value()
-                    discount_amount = discount_amount if discount_amount > 0 else 0
-                    new_price = int(current_price_on_page) - int(discount_amount)
+                    # 사전할인 시에는 크롤링 전 할인 금액 사용
+                    pre_discount_amount = self.fav_pre_discount_amount.value()
+                    pre_discount_amount = pre_discount_amount if pre_discount_amount > 0 else 0
+                    new_price = int(current_price_on_page) - int(pre_discount_amount)
                     price_input.clear()
                     price_input.send_keys(str(new_price))
-                    self.log_message(f"💰 새 가격 입력: ¥{new_price:,}")
+                    self.log_message(f"💰 사전할인 적용: ¥{current_price_on_page:,} - ¥{pre_discount_amount} = ¥{new_price:,}")
                     time.sleep(1)
                 except Exception as e:
                     self.log_error(f"가격 입력 실패: {str(e)}")
@@ -11721,31 +11776,24 @@ class Main(QMainWindow):
                 QMessageBox.warning(self, "경고", "등록된 주력 상품이 없습니다.\n먼저 주력 상품을 추가해주세요.")
                 return
             
-            # 주력상품 사전 할인 여부 확인
-            reply = QMessageBox.question(
-                self, 
-                "주력상품 사전 할인", 
-                "주력상품들을 먼저 설정 금액만큼 할인하시겠습니까?\n\n"
-                "✅ Yes: 주력상품 할인 → 전체 가격분석\n"
-                "❌ No: 바로 전체 가격분석 시작",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            
             # UI 상태 변경
             self.fav_start_analysis_btn.setEnabled(False)
             self.fav_start_analysis_btn.setText("🔄 진행 중...")
             
             # 설정값 가져오기
-            discount_amount = self.fav_discount_amount.value()
+            pre_discount_enabled = self.fav_enable_pre_discount.isChecked()
+            pre_discount_amount = self.fav_pre_discount_amount.value()
+            post_discount_amount = self.fav_discount_amount.value()
             min_margin = self.fav_min_margin.value()
             is_auto_mode = self.fav_auto_mode.isChecked()
             
+            # 사전 할인 실행 (체크박스가 활성화된 경우에만)
             before_update_flag = False
-            if reply == QMessageBox.StandardButton.Yes:
-                # 사전 할인 실행
-                self.log_message(f"🔄 주력상품 사전 할인 시작: {discount_amount}엔 차감")
+            if pre_discount_enabled:
+                self.log_message(f"🔽 주력상품 사전 할인 시작: {pre_discount_amount}엔 차감")
+                self.log_message(f"📋 설정: 크롤링 전 할인 {pre_discount_amount}엔, 크롤링 후 할인 {post_discount_amount}엔")
                 
+                updated_count = 0
                 for product in self.favorite_products:
                     if product.get('excluded', False):
                         continue
@@ -11759,11 +11807,11 @@ class Main(QMainWindow):
                         if price_numbers:
                             current_price = int(price_numbers[0].replace(',', ''))
                     
-                    new_price = current_price - discount_amount
+                    new_price = current_price - pre_discount_amount
                     if new_price < 100:
                         new_price = 100
                     
-                    self.log_message(f"💰 할인 적용: {product_name} ({current_price:,}엔 → {new_price:,}엔)")
+                    self.log_message(f"💰 사전 할인 적용: {product_name} ({current_price:,}엔 → {new_price:,}엔)")
                     
                     if product_id:
                         # 가격 선 업데이트 플래그
@@ -11771,13 +11819,20 @@ class Main(QMainWindow):
                         success = self.update_buyma_product_price_with_id(product_name, new_price, product_id, True, False, before_update_flag)
                         if success:
                             product['current_price'] = new_price
-                            self.log_message(f"✅ 할인 완료: {product_name}")
+                            updated_count += 1
+                            self.log_message(f"✅ 사전 할인 완료: {product_name}")
                         else:
-                            self.log_message(f"❌ 할인 실패: {product_name}")
+                            self.log_message(f"❌ 사전 할인 실패: {product_name}")
+                    else:
+                        self.log_message(f"⚠️ 상품ID 없음: {product_name}")
                 
-                self.log_message("✅ 주력상품 사전 할인 완료, 이제 전체 가격분석 시작")
+                self.log_message(f"✅ 주력상품 사전 할인 완료: {updated_count}개 상품 처리")
+                self.log_message("🔍 이제 전체 가격분석을 시작합니다...")
+            else:
+                self.log_message(f"📋 설정: 사전 할인 비활성화, 크롤링 후 할인 {post_discount_amount}엔")
+                self.log_message("🔍 바로 전체 가격분석을 시작합니다...")
             
-            # 기존 로직 실행
+            # 기존 로직 실행 (가격확인 → 가격수정)
             self.price_progress_widget.update_progress(
                 0, 
                 len(self.favorite_products) * 2,
@@ -11786,9 +11841,9 @@ class Main(QMainWindow):
             )
             
             self.log_message(f"🚀 주력상품 가격확인-가격수정 통합 처리 시작: {len(self.favorite_products)}개")
-            self.log_message(f"🔧 설정: 할인 {discount_amount}엔, 최소마진 {min_margin}엔, 모드: {'🤖 자동' if is_auto_mode else '👤 수동'}")
+            self.log_message(f"🔧 설정: 크롤링 후 할인 {post_discount_amount}엔, 최소마진 {min_margin}엔, 모드: {'🤖 자동' if is_auto_mode else '👤 수동'}")
             
-            QTimer.singleShot(0, lambda: self.run_favorite_integrated_process(discount_amount, min_margin, is_auto_mode))
+            QTimer.singleShot(0, lambda: self.run_favorite_integrated_process(post_discount_amount, min_margin, is_auto_mode))
             
         except Exception as e:
             self.log_message(f"❌ 주력상품 통합 처리 시작 오류: {str(e)}")
