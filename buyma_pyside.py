@@ -12757,15 +12757,18 @@ class Main(QMainWindow):
             
             # 반복 실행 체크
             if hasattr(self, 'fav_repeat_mode') and self.fav_repeat_mode.isChecked():
-                self.my_products_log_signal.emit("🔄 반복 모드: 테이블 초기화 후 3초 후 재시작...")
+                self.my_products_log_signal.emit("🔄 반복 모드: 3초 후 재시작 (내 상품 가격 새로 조회)...")
                 
-                # 테이블 데이터 초기화 (상태만 리셋)
+                # 테이블 데이터 초기화 (매회차마다 완전 새로 시작)
                 for product in self.favorite_products:
-                    product['status'] = '분석 필요'
-                    product['lowest_price'] = 0
-                    product['suggested_price'] = 0
-                    product['price_difference'] = 0
-                    product['needs_update'] = False
+                    if not product.get('excluded', False):
+                        product['status'] = '분석 필요'
+                        product['lowest_price'] = 0
+                        product['suggested_price'] = 0
+                        product['price_difference'] = 0
+                        product['needs_update'] = False
+                        # 현재가도 초기화하여 매번 새로 조회하도록
+                        product['current_price'] = 0
                 
                 # 테이블 업데이트
                 self.update_table_signal.emit()
