@@ -2507,9 +2507,9 @@ class Main(QMainWindow):
         table_layout = QVBoxLayout(table_group)
         
         self.favorite_table = QTableWidget()
-        self.favorite_table.setColumnCount(8)
+        self.favorite_table.setColumnCount(9)
         self.favorite_table.setHorizontalHeaderLabels([
-            "제외", "상품명", "현재가격", "최저가", "제안가", "가격차이", "상태", "액션"
+            "제외", "상품명", "현재가격", "최저가", "제안가", "가격차이", "제한금액", "상태", "액션"
         ])
         self.favorite_table.horizontalHeader().setStretchLastSection(True)
         self.favorite_table.setAlternatingRowColors(True)
@@ -2517,12 +2517,13 @@ class Main(QMainWindow):
         
         # 테이블 컬럼 너비 설정
         self.favorite_table.setColumnWidth(0, 50)   # 제외 체크박스
-        self.favorite_table.setColumnWidth(1, 450)  # 상품명 (줄임)
+        self.favorite_table.setColumnWidth(1, 400)  # 상품명 (줄임)
         self.favorite_table.setColumnWidth(2, 100)  # 현재가격
         self.favorite_table.setColumnWidth(3, 100)  # 최저가
         self.favorite_table.setColumnWidth(4, 100)  # 제안가
         self.favorite_table.setColumnWidth(5, 100)  # 가격차이
-        self.favorite_table.setColumnWidth(6, 150)  # 상태
+        self.favorite_table.setColumnWidth(6, 100)  # 제한금액
+        self.favorite_table.setColumnWidth(7, 150)  # 상태
         
         table_layout.addWidget(self.favorite_table)
         
@@ -6887,7 +6888,7 @@ class Main(QMainWindow):
             self.my_products_log_signal.emit(f"❌ 페이지 수정 오류: {str(e)}")
             return 0
 
-    def update_buyma_product_price_with_id(self, product_name, new_price, product_id, is_auto_mode=False, show_dialog=True, before_update_flag=False):
+    def update_buyma_product_price_with_id(self, product_name, new_price, product_id, is_auto_mode=False, show_dialog=True, before_update_flag=False, min_margin_check=None):
         """BUYMA에서 상품 가격 수정 (상품ID 직접 사용)"""
         try:
             # 1. BUYMA 상품 수정 페이지 접속 (상품ID 사용)
@@ -6946,6 +6947,14 @@ class Main(QMainWindow):
                     )
                     current_price_on_page = int(price_input.get_attribute("value") or "0")
                     self.log_message(f"📋 BUYMA 페이지 현재 가격: ¥{current_price_on_page:,}")
+                    
+                    # 최소마진 체크 (주력상품에서만)
+                    if min_margin_check is not None:
+                        price_change = new_price - current_price_on_page  # 가격 변화 (음수면 손실)
+                        if price_change < 0 and abs(price_change) > min_margin_check:
+                            # 가격을 내려야 하는데 손실이 최소마진보다 큰 경우
+                            self.log_message(f"⚠️ 손실이 최소마진을 초과하여 수정 취소: 손실 {abs(price_change):,}엔 > 최소마진 {min_margin_check:,}엔")
+                            return False
                 except Exception as e:
                     self.log_error(f"현재 가격을 확인할 수 없습니다: {str(e)}")
                     current_price_on_page = 0
@@ -11350,7 +11359,8 @@ class Main(QMainWindow):
                     self, 
                     "컬럼 오류", 
                     f"필수 컬럼이 없습니다: {', '.join(missing_columns)}\n\n"
-                    f"필요한 컬럼: 상품명, 상품ID"
+                    f"필요한 컬럼: 상품명, 상품ID\n"
+                    f"선택 컬럼: 가격수정제한금액, 제외"
                 )
                 return
             
@@ -11386,6 +11396,19 @@ class Main(QMainWindow):
                             if str(exclude_value).lower() in ['true', '1', '1.0', 'y', '예', 'yes'] or exclude_value == 1 or exclude_value == 1.0:
                                 is_excluded = True
                     
+                    # 가격수정제한금액 가져오기 (엑셀에 '가격수정제한금액' 컬럼이 있으면)
+                    min_price_limit = 0
+                    if '가격수정제한금액' in df.columns:
+                        limit_value = row.get('가격수정제한금액', 0)
+                        # NaN 값 처리
+                        if pd.isna(limit_value):
+                            min_price_limit = 0
+                        else:
+                            try:
+                                min_price_limit = int(float(limit_value))
+                            except (ValueError, TypeError):
+                                min_price_limit = 0
+                    
                     # 주력상품 데이터 생성 (기본값 설정)
                     favorite_product = {
                         'name': product_name,
@@ -11398,7 +11421,8 @@ class Main(QMainWindow):
                         'last_checked': '',
                         'needs_update': False,
                         'url': f"https://www.buyma.com/item/{product_id}/",
-                        'excluded': is_excluded  # 제외 설정 추가
+                        'excluded': is_excluded,  # 제외 설정 추가
+                        'min_price_limit': min_price_limit  # 가격수정제한금액 추가
                     }
                     
                     self.favorite_products.append(favorite_product)
@@ -12095,6 +12119,13 @@ class Main(QMainWindow):
                         # 제안가 계산 (최저가 - 할인금액)
                         suggested_price = max(lowest_price - discount_amount, 0)
                         
+                        # 가격수정제한금액 체크
+                        min_price_limit = product.get('min_price_limit', 0)
+                        if min_price_limit > 0 and suggested_price < min_price_limit:
+                            # 제안가가 제한금액보다 낮으면 제한금액으로 설정
+                            suggested_price = min_price_limit
+                            self.log_message(f"🔒 가격제한 적용: {product_name} - 제한금액 ¥{min_price_limit:,} 적용")
+                        
                         # 가격차이 계산 (제안가 - 현재가)
                         price_diff = suggested_price - current_price
                         
@@ -12354,6 +12385,15 @@ class Main(QMainWindow):
                 else:
                     self.favorite_table.setItem(row, 5, QTableWidgetItem("-"))
                 
+                # 가격수정제한금액
+                min_price_limit = product.get('min_price_limit', 0)
+                if min_price_limit > 0:
+                    limit_item = QTableWidgetItem(f"¥{min_price_limit:,}")
+                    limit_item.setForeground(QBrush(QColor("#ff6b6b")))  # 빨간색으로 강조
+                    self.favorite_table.setItem(row, 6, limit_item)
+                else:
+                    self.favorite_table.setItem(row, 6, QTableWidgetItem("-"))
+                
                 # 상태
                 status = product.get('status', '확인 필요')
                 status_item = QTableWidgetItem(status)
@@ -12366,7 +12406,7 @@ class Main(QMainWindow):
                 elif '⚠️ 손실 예상' in status:
                     status_item.setForeground(QBrush(QColor("#dc3545")))  # 빨간색 (손실)
                 
-                self.favorite_table.setItem(row, 6, status_item)
+                self.favorite_table.setItem(row, 7, status_item)
                 
                 # 액션 버튼
                 action_widget = QWidget()
@@ -12393,7 +12433,7 @@ class Main(QMainWindow):
                 delete_btn.clicked.connect(lambda checked, r=row: self.delete_favorite_product(r))
                 action_layout.addWidget(delete_btn)
                 
-                self.favorite_table.setCellWidget(row, 7, action_widget)
+                self.favorite_table.setCellWidget(row, 8, action_widget)
                 
         except Exception as e:
             self.log_message(f"주력상품 테이블 업데이트 오류: {str(e)}")
@@ -12609,6 +12649,14 @@ class Main(QMainWindow):
                         else:
                             # 제안가 계산 (경쟁사 최저가 - 할인금액)
                             suggested_price = competitor_price - discount_amount
+                            
+                            # 가격수정제한금액 체크
+                            min_price_limit = product.get('min_price_limit', 0)
+                            if min_price_limit > 0 and suggested_price < min_price_limit:
+                                # 제안가가 제한금액보다 낮으면 제한금액으로 설정
+                                suggested_price = min_price_limit
+                                self.my_products_log_signal.emit(f"🔒 가격제한 적용: {product_name} - 제한금액 ¥{min_price_limit:,} 적용")
+                            
                             price_diff = suggested_price - current_price  # 제안가 - 현재가
                             
                         # 상태 결정 (가격관리 탭과 동일한 로직)
@@ -12723,10 +12771,10 @@ class Main(QMainWindow):
                                 self.my_products_log_signal.emit(f"⏭️ 사용자 취소: {product_name}")
                                 continue
                         
-                        # 실제 가격 수정 실행 (product_id 직접 전달)
+                        # 실제 가격 수정 실행 (product_id 직접 전달, 최소마진 체크 포함)
                         product_id = product.get('product_id', '')
                         if product_id:
-                            success = self.update_buyma_product_price_with_id(product_name, suggested_price, product_id, True, show_dialog=False)
+                            success = self.update_buyma_product_price_with_id(product_name, suggested_price, product_id, True, show_dialog=False, min_margin_check=min_margin)
                         else:
                             success = self.update_buyma_product_price(product_name, suggested_price, True, show_dialog=False)
                         
@@ -12767,8 +12815,7 @@ class Main(QMainWindow):
                         product['suggested_price'] = 0
                         product['price_difference'] = 0
                         product['needs_update'] = False
-                        # 현재가도 초기화하여 매번 새로 조회하도록
-                        product['current_price'] = 0
+                        # 현재가는 초기화하지 않음 (이전 값 유지하여 현재가 조회 실패 시 대비)
                 
                 # 테이블 업데이트
                 self.update_table_signal.emit()

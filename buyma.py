@@ -2299,9 +2299,9 @@ class Main(QMainWindow):
         table_layout = QVBoxLayout(table_group)
         
         self.favorite_table = QTableWidget()
-        self.favorite_table.setColumnCount(7)
+        self.favorite_table.setColumnCount(8)
         self.favorite_table.setHorizontalHeaderLabels([
-            "상품명", "현재가격", "최저가", "제안가", "가격차이", "상태", "액션"
+            "상품명", "현재가격", "최저가", "제안가", "가격차이", "제한금액", "상태", "액션"
         ])
         self.favorite_table.horizontalHeader().setStretchLastSection(True)
         self.favorite_table.setAlternatingRowColors(True)
@@ -2313,7 +2313,8 @@ class Main(QMainWindow):
         self.favorite_table.setColumnWidth(2, 100)  # 최저가
         self.favorite_table.setColumnWidth(3, 100)  # 제안가
         self.favorite_table.setColumnWidth(4, 100)  # 가격차이
-        self.favorite_table.setColumnWidth(5, 150)  # 상태
+        self.favorite_table.setColumnWidth(5, 100)  # 제한금액
+        self.favorite_table.setColumnWidth(6, 150)  # 상태
         
         table_layout.addWidget(self.favorite_table)
         
