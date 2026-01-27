@@ -2299,9 +2299,9 @@ class Main(QMainWindow):
         table_layout = QVBoxLayout(table_group)
         
         self.favorite_table = QTableWidget()
-        self.favorite_table.setColumnCount(7)
+        self.favorite_table.setColumnCount(8)
         self.favorite_table.setHorizontalHeaderLabels([
-            "상품명", "현재가격", "최저가", "제안가", "가격차이", "상태", "액션"
+            "상품명", "현재가격", "최저가", "제안가", "가격차이", "제한금액", "상태", "액션"
         ])
         self.favorite_table.horizontalHeader().setStretchLastSection(True)
         self.favorite_table.setAlternatingRowColors(True)
@@ -2313,7 +2313,8 @@ class Main(QMainWindow):
         self.favorite_table.setColumnWidth(2, 100)  # 최저가
         self.favorite_table.setColumnWidth(3, 100)  # 제안가
         self.favorite_table.setColumnWidth(4, 100)  # 가격차이
-        self.favorite_table.setColumnWidth(5, 150)  # 상태
+        self.favorite_table.setColumnWidth(5, 100)  # 제한금액
+        self.favorite_table.setColumnWidth(6, 150)  # 상태
         
         table_layout.addWidget(self.favorite_table)
         
@@ -6303,32 +6304,27 @@ class Main(QMainWindow):
                 self.log_error(f"현재 가격을 확인할 수 없습니다: {str(e)}")
                 current_price_on_page = 0
             
+            # ★★★ 핵심 수정: 실시간 현재 가격 기준으로 제안가 재계산 ★★★
+            # 테이블에서 최저가 정보 가져오기
+            lowest_price = 0
+            discount_amount = self.discount_amount.value()
+            
+            for row in range(self.price_table.rowCount()):
+                table_product_name = self.price_table.item(row, 0).text()
+                if table_product_name == product_name:
+                    lowest_price_text = self.price_table.item(row, 2).text()
+                    import re
+                    price_numbers = re.findall(r'[\d,]+', lowest_price_text)
+                    lowest_price = int(price_numbers[0].replace(',', '')) if price_numbers else 0
+                    break
+            
+            # 실시간 현재 가격 기준으로 제안가 재계산
+            if lowest_price > 0:
+                new_price = max(lowest_price - discount_amount, 0)
+                self.log_message(f"🔄 실시간 재계산: 최저가 ¥{lowest_price:,} - 할인 ¥{discount_amount:,} = 제안가 ¥{new_price:,}")
+            
             # 5. 수동 모드일 경우 설정하기 버튼 클릭 전에 사용자 확인 (show_dialog=True일 때만)
             if not is_auto_mode and show_dialog:
-                # 테이블에서 최저가와 할인 금액 정보 가져오기
-                lowest_price = 0
-                discount_amount = self.discount_amount.value()
-                
-                for row in range(self.price_table.rowCount()):
-                    table_product_name = self.price_table.item(row, 0).text()
-                    if table_product_name == product_name:
-                        lowest_price_text = self.price_table.item(row, 2).text()
-                        import re
-                        price_numbers = re.findall(r'[\d,]+', lowest_price_text)
-                        lowest_price = int(price_numbers[0].replace(',', '')) if price_numbers else 0
-                        break
-                
-                # 사용자 확인 다이얼로그 (더 상세한 정보 포함)
-                # if not self.show_detailed_price_update_confirmation(
-                #     product_name, 
-                #     current_price_on_page, 
-                #     new_price, 
-                #     lowest_price, 
-                #     discount_amount
-                # ):
-                #     self.log_message(f"❌ 사용자가 가격 수정을 취소했습니다: {product_name[:20]}...")
-                #     return "cancelled"  # 취소 상태 반환
-
                 # 수동 모드: 사용자 확인
                 reply = QMessageBox.question(
                     self,
