@@ -673,6 +673,12 @@ class Main(QMainWindow):
     dashboard_progress_signal = Signal(str, int)         # progress_name, value
     dashboard_log_signal = Signal(str)                   # log_message
     
+    # 워커 스레드용 UI 업데이트 시그널 추가
+    display_page_signal = Signal()                       # 페이지 표시
+    progress_widget_complete_signal = Signal(str, str)   # 진행률 위젯 완료
+    table_update_signal = Signal()                       # 테이블 업데이트
+    save_analysis_signal = Signal(dict)                  # 분석 결과 저장
+    
     def __init__(self):
         super().__init__()
         
@@ -782,6 +788,12 @@ class Main(QMainWindow):
         self.progress_complete_signal.connect(self.set_progress_complete)
         self.progress_error_signal.connect(self.set_progress_error)
         
+        # 워커 스레드용 UI 업데이트 시그널 연결
+        self.display_page_signal.connect(self.display_current_page)
+        self.progress_widget_complete_signal.connect(self.on_progress_widget_complete)
+        self.table_update_signal.connect(self.update_price_table_with_current_data)
+        self.save_analysis_signal.connect(self.update_products_json_with_analysis)
+        
         # 확인 결과 저장용
         self.confirmation_result = None
         
@@ -831,6 +843,14 @@ class Main(QMainWindow):
                 self.log_message("▶️ 작업이 재시작되었습니다.")
         except Exception as e:
             self.log_message(f"❌ 일시정지/재시작 오류: {str(e)}")
+    
+    @Slot(str, str)
+    def on_progress_widget_complete(self, title, message):
+        """진행률 위젯 완료 처리 (메인 스레드)"""
+        try:
+            self.price_progress_widget.set_task_complete(title, message)
+        except Exception as e:
+            self.log_message(f"진행률 위젯 완료 오류: {str(e)}")
     
     def stop_all_work(self):
         """모든 작업 중지"""
@@ -4009,8 +4029,10 @@ class Main(QMainWindow):
             'delay': self.delay_time.value()
         }
         
-        # 즉시 크롤링 시작
-        QTimer.singleShot(0, lambda: self.run_crawling(url, count, crawling_settings))
+        # 별도 스레드에서 크롤링 실행
+        import threading
+        self.crawling_thread = threading.Thread(target=self.run_crawling, args=(url, count, crawling_settings), daemon=True)
+        self.crawling_thread.start()
     
     def run_crawling_with_shared_driver(self, url, count, settings):
         """공용 드라이버를 사용한 크롤링 실행"""
@@ -4959,10 +4981,9 @@ class Main(QMainWindow):
             
             # 별도 스레드에서 로그인 실행
             import threading
-            
-            # QTimer로 로그인 실행
-            QTimer.singleShot(0, lambda: self.perform_buyma_login(email, password))
-            
+            self.login_thread = threading.Thread(target=self.perform_buyma_login, args=(email, password), daemon=True)
+            self.login_thread.start()
+                        
         except Exception as e:
             self.log_message(f"로그인 시작 오류: {str(e)}")
             self.reset_login_ui()
@@ -5569,8 +5590,14 @@ class Main(QMainWindow):
         min_margin = self.min_margin.value()
         is_auto_mode = self.auto_mode.isChecked()
         
-        # QTimer로 가격 분석 실행
-        QTimer.singleShot(0, lambda: self.analyze_all_pages_sequentially(discount, min_margin, is_auto_mode))
+        # 별도 스레드에서 가격 분석 실행
+        import threading
+        self.price_analysis_thread = threading.Thread(
+            target=self.analyze_all_pages_sequentially, 
+            args=(discount, min_margin, is_auto_mode), 
+            daemon=True
+        )
+        self.price_analysis_thread.start()
         return
         
         # UI 제어: 모니터링 탭으로 이동 및 다른 탭 비활성화
@@ -6363,17 +6390,14 @@ class Main(QMainWindow):
                 # UI 업데이트는 시그널로 처리 (워커 스레드에서 직접 UI 조작 금지)
                 # QApplication.processEvents() 제거 - 크래시 원인
             
-            # 첫 번째 페이지 표시 (비동기 처리)
-            QTimer.singleShot(100, self.display_current_page)
+            # 첫 번째 페이지 표시 (시그널 사용)
+            self.display_page_signal.emit()
             
             # 대용량 데이터 처리 후 메모리 정리
             if len(products) > 1000:
-                def cleanup_memory():
-                    import gc
-                    gc.collect()
-                    self.log_message("🧹 대용량 데이터 처리 완료: 메모리 정리 완료")
-                
-                QTimer.singleShot(2000, cleanup_memory)  # 2초 후 메모리 정리
+                import gc
+                gc.collect()
+                self.log_message("🧹 대용량 데이터 처리 완료: 메모리 정리 완료")
                 
         except Exception as e:
             self.log_error(f"상품 표시 오류: {str(e)}")
@@ -6427,8 +6451,10 @@ class Main(QMainWindow):
             self.update_price_progress_widget(0, 100, "내 상품 불러오기 시작...")
             
             # 내 상품 불러오기 실행 (완료 후 자동으로 가격분석 시작됨)
-            # QTimer로 내 상품 불러오기 실행
-            QTimer.singleShot(0, self.load_my_products)
+            # 별도 스레드에서 실행
+            import threading
+            self.my_products_thread = threading.Thread(target=self.load_my_products, daemon=True)
+            self.my_products_thread.start()
             return
         
         except Exception as e:
@@ -6566,9 +6592,9 @@ class Main(QMainWindow):
                 try:
                     self.my_products_log_signal.emit(f"📄 페이지 {page_num + 1}/{self.total_pages} 처리 시작...")
                     
-                    # 해당 페이지로 이동
+                    # 해당 페이지로 이동 (시그널 사용)
                     self.current_page = page_num
-                    QTimer.singleShot(0, self.display_current_page)
+                    self.display_page_signal.emit()
                     time.sleep(2)  # 페이지 전환 대기
 
                     # ==================== 1단계: 현재 페이지 가격 분석 ====================
@@ -6604,11 +6630,11 @@ class Main(QMainWindow):
             self.my_products_log_signal.emit(f"🎉 전체 페이지별 순차 처리 완료!")
             self.my_products_log_signal.emit(f"📊 최종 결과: 분석 {total_analyzed}개, 수정 {total_updated}개, 실패 {total_failed}개")
             
-            # 진행률 위젯 완료 상태
-            QTimer.singleShot(0, lambda: self.price_progress_widget.set_task_complete(
+            # 진행률 위젯 완료 상태 (시그널 사용)
+            self.progress_widget_complete_signal.emit(
                 "페이지별 처리 완료", 
                 f"분석 {total_analyzed}개, 수정 {total_updated}개 완료"
-            ))
+            )
             
             # UI 제어 해제
             # QTimer.singleShot(0, lambda: self.set_tabs_enabled(True))
@@ -6750,11 +6776,8 @@ class Main(QMainWindow):
                     # 10개마다 테이블 업데이트 (페이지 내에서)
                     if (i + 1) % 10 == 0:
                         self.my_products_log_signal.emit(f"💾 페이지 {page_num+1} 테이블 업데이트 중... ({i + 1}개 완료)")
-                        # 분석 결과를 테이블에 즉시 반영
-                        QTimer.singleShot(0, lambda: self.update_price_table_with_current_data())
-                        QTimer.singleShot(100, lambda: self.price_table.viewport().update())
-                        # 마지막 업데이트된 행으로 스크롤
-                        QTimer.singleShot(200, lambda row=i: self.price_table.scrollToItem(self.price_table.item(row, 0)))
+                        # 분석 결과를 테이블에 즉시 반영 (시그널 사용)
+                        self.table_update_signal.emit()
                     
                 except Exception as e:
                     self.my_products_log_signal.emit(f"❌ 상품 분석 오류: {product.get('name', 'Unknown')} - {str(e)}")
@@ -6865,16 +6888,27 @@ class Main(QMainWindow):
                     
                     if suggested_price > 0:
                         # 실제 BUYMA 가격 수정 실행
-                        success = self.update_buyma_product_price(product_name, suggested_price, is_auto_mode)
+                        result = self.update_buyma_product_price(product_name, suggested_price, is_auto_mode)
                         
-                        if success:
+                        if result == True:
                             product['status'] = '✅ 가격 수정 완료'
                             product['needs_update'] = False
                             updated_count += 1
                             self.my_products_log_signal.emit(f"✅ 가격 수정 완료: {product_name[:20]}... → ¥{suggested_price:,}")
-                        else:
+                        elif result == "cancelled":
+                            product['status'] = '❌ 사용자 취소'
+                            self.my_products_log_signal.emit(f"❌ 사용자 취소: {product_name[:20]}...")
+                        elif result == "skipped":
+                            product['status'] = '⏭️ 건너뛰기'
+                            product['needs_update'] = False
+                            self.my_products_log_signal.emit(f"⏭️ 건너뛰기: {product_name[:20]}...")
+                        elif result == "error":
                             product['status'] = '❌ 가격 수정 실패'
                             self.my_products_log_signal.emit(f"❌ 가격 수정 실패: {product_name[:20]}...")
+                        else:
+                            # False 또는 기타 - 건너뛰기로 처리
+                            product['status'] = '⏭️ 건너뛰기'
+                            product['needs_update'] = False
                     
                     time.sleep(2)  # 상품 간 딜레이
                     
@@ -6996,7 +7030,7 @@ class Main(QMainWindow):
             product_id = self.extract_product_id(product_name)
             if not product_id:
                 self.price_analysis_log_signal.emit(f"❌ 상품ID를 찾을 수 없어 가격 수정을 건너뜁니다: {product_name[:30]}...")
-                return False
+                return "skipped"
             
             # 2. BUYMA 상품 수정 페이지 접속
             edit_url = f"https://www.buyma.com/my/sell/search?sale_kind=all&duty_kind=all&keyword={product_id}&status=for_sale&multi_id=#/"
@@ -7020,7 +7054,7 @@ class Main(QMainWindow):
                 time.sleep(2)
             except Exception as e:
                 self.log_error(f"가격 수정 버튼을 찾을 수 없습니다: {str(e)}")
-                return False
+                return "error"
             
             # 4. 현재 가격 확인 (BUYMA 페이지에서 실제 가격 읽기)
             try:
@@ -7035,15 +7069,21 @@ class Main(QMainWindow):
             
             # ★★★ 핵심 수정: 실시간 현재 가격 기준으로 제안가 재계산 ★★★
             # 테이블에서 최저가 정보 가져오기
+            # 테이블 컬럼: 0:제외, 1:상품명, 2:현재가격, 3:최저가, 4:제안가, 5:가격차이, 6:상태, 7:액션
             lowest_price = 0
             discount_amount = self.discount_amount.value()
             
             for row in range(self.price_table.rowCount()):
-                table_product_name = self.price_table.item(row, 0).text()
+                item = self.price_table.item(row, 1)  # 상품명은 1번 컬럼
+                if item is None:
+                    continue
+                table_product_name = item.text()
                 if table_product_name == product_name:
-                    lowest_price_text = self.price_table.item(row, 2).text()
-                    price_numbers = re.findall(r'[\d,]+', lowest_price_text)
-                    lowest_price = int(price_numbers[0].replace(',', '')) if price_numbers else 0
+                    lowest_price_item = self.price_table.item(row, 3)  # 최저가는 3번 컬럼
+                    if lowest_price_item:
+                        lowest_price_text = lowest_price_item.text()
+                        price_numbers = re.findall(r'[\d,]+', lowest_price_text)
+                        lowest_price = int(price_numbers[0].replace(',', '')) if price_numbers else 0
                     break
             
             # 실시간 현재 가격 기준으로 제안가 재계산
@@ -7057,10 +7097,10 @@ class Main(QMainWindow):
                 price_difference = current_price_on_page - lowest_price
                 if price_difference == 0:
                     self.log_message(f"⏭️ 건너뛰기: {product_name[:20]}... - 현재가 적정 (동일가)")
-                    return False
+                    return "skipped"
                 elif price_difference < 0:
                     self.log_message(f"⏭️ 건너뛰기: {product_name[:20]}... - 현재가 적정 (최저가)")
-                    return False
+                    return "skipped"
                 
                 # 수동 모드: 시그널을 통해 메인 스레드에서 사용자 확인
                 import threading
@@ -7128,11 +7168,11 @@ class Main(QMainWindow):
                 
             except Exception as e:
                 self.log_error(f"설정하기 버튼을 찾을 수 없습니다: {str(e)}")
-                return False
+                return "error"
                 
         except Exception as e:
             self.log_error(f"가격 수정 오류: {str(e)}")
-            return False
+            return "error"
 
     def show_detailed_price_update_confirmation(self, product_name, current_price, new_price, lowest_price, discount_amount):
         """상세한 가격 수정 확인 다이얼로그 표시 (설정하기 버튼 클릭 전)"""
@@ -9288,10 +9328,12 @@ class Main(QMainWindow):
             
             # 별도 스레드에서 가격 수정 실행
             import threading
-            
-            # QTimer로 가격 업데이트 실행
-            QTimer.singleShot(0, lambda: self.run_buyma_price_update(product_name, new_price, row, auto_mode))
-            
+            price_update_thread = threading.Thread(
+                target=self.run_buyma_price_update, 
+                args=(product_name, new_price, row, auto_mode),
+                daemon=True
+            )
+            price_update_thread.start()
             
         except Exception as e:
             self.log_message(f"가격 수정 실행 오류: {str(e)}")
@@ -9625,9 +9667,8 @@ class Main(QMainWindow):
         
         # 별도 스레드에서 전체 가격 분석 실행
         import threading
-        
-        # QTimer로 대량 분석 실행
-        QTimer.singleShot(0, self.run_bulk_price_analysis)
+        bulk_analysis_thread = threading.Thread(target=self.run_bulk_price_analysis, daemon=True)
+        bulk_analysis_thread.start()
     
     def run_bulk_price_analysis(self):
         """전체 상품 가격 분석 실행 (별도 스레드)"""
@@ -10082,9 +10123,8 @@ class Main(QMainWindow):
             
             # 6. 별도 스레드에서 업로드 실행
             import threading
-            
-            # QTimer로 업로드 실행
-            QTimer.singleShot(0, self.run_bulk_upload)
+            self.upload_thread = threading.Thread(target=self.run_bulk_upload, daemon=True)
+            self.upload_thread.start()
             
         except Exception as e:
             self.log_message(f"❌ 업로드 시작 오류: {str(e)}")
@@ -11882,7 +11922,14 @@ class Main(QMainWindow):
             self.log_message(f"🚀 주력상품 가격확인-가격수정 통합 처리 시작: {len(self.favorite_products)}개")
             self.log_message(f"🔧 설정: 크롤링 후 할인 {post_discount_amount}엔, 최소마진 {min_margin}엔, 모드: {'🤖 자동' if is_auto_mode else '👤 수동'}")
             
-            QTimer.singleShot(0, lambda: self.run_favorite_integrated_process(post_discount_amount, min_margin, is_auto_mode))
+            # 별도 스레드에서 통합 처리 실행
+            import threading
+            self.favorite_thread = threading.Thread(
+                target=self.run_favorite_integrated_process, 
+                args=(post_discount_amount, min_margin, is_auto_mode), 
+                daemon=True
+            )
+            self.favorite_thread.start()
             
         except Exception as e:
             self.log_message(f"❌ 주력상품 통합 처리 시작 오류: {str(e)}")
@@ -15262,9 +15309,8 @@ https://www.buyma.com/contents/safety/anshin.html
                     # 10개마다 중간 저장 및 테이블 업데이트
                     if (row + 1) % 10 == 0 and analysis_results:
                         self.my_products_log_signal.emit(f"💾 중간 저장 & 테이블 업데이트 중... ({row + 1}개 완료)")
-                        QTimer.singleShot(0, lambda results=analysis_results.copy(): self.update_products_json_with_analysis(results))
-                        # 테이블 강제 업데이트
-                        QTimer.singleShot(100, lambda: self.price_table.viewport().update())
+                        self.save_analysis_signal.emit(analysis_results.copy())
+                        self.table_update_signal.emit()
                     
                 except Exception as e:
                     self.my_products_log_signal.emit(f"❌ 상품 분석 오류 (행 {row}): {str(e)}")
@@ -15273,7 +15319,7 @@ https://www.buyma.com/contents/safety/anshin.html
             # 분석 결과를 JSON 파일에 저장
             if analysis_results:
                 self.my_products_log_signal.emit(f"💾 분석 결과를 JSON 파일에 저장 중...")
-                QTimer.singleShot(0, lambda: self.update_products_json_with_analysis(analysis_results))
+                self.save_analysis_signal.emit(analysis_results)
             
             self.my_products_log_signal.emit("🎉 모든 상품 가격 분석 완료!")
             

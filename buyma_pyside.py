@@ -6881,14 +6881,19 @@ class Main(QMainWindow):
             
             self.my_products_log_signal.emit(f"📝 페이지 {page_num + 1}에서 수정 대상: {len(products_to_update)}개 상품")
             
+            # 할인 금액 미리 가져오기 (메인 스레드 UI 접근 방지)
+            discount = self.discount_amount.value() if hasattr(self, 'discount_amount') else 0
+            
             for product in products_to_update:
                 try:
                     product_name = product.get('title', '')
                     suggested_price = product.get('suggested_price', 0)
+                    lowest_price = product.get('lowest_price', 0)
                     
                     if suggested_price > 0:
-                        # 실제 BUYMA 가격 수정 실행
-                        result = self.update_buyma_product_price(product_name, suggested_price, is_auto_mode)
+                        # 실제 BUYMA 가격 수정 실행 (파라미터로 데이터 전달)
+                        result = self.update_buyma_product_price(product_name, suggested_price, is_auto_mode, 
+                                                                  lowest_price=lowest_price, discount_amount=discount)
                         
                         if result == True:
                             product['status'] = '✅ 가격 수정 완료'
@@ -7023,7 +7028,7 @@ class Main(QMainWindow):
             self.log_error(f"가격 수정 오류: {str(e)}")
             return False
 
-    def update_buyma_product_price(self, product_name, new_price, is_auto_mode=False, show_dialog=True):
+    def update_buyma_product_price(self, product_name, new_price, is_auto_mode=False, show_dialog=True, lowest_price=None, discount_amount=None):
         """BUYMA에서 상품 가격 수정"""
         try:
             # 1. 상품ID 추출
@@ -7067,27 +7072,14 @@ class Main(QMainWindow):
                 self.log_error(f"현재 가격을 확인할 수 없습니다: {str(e)}")
                 current_price_on_page = 0
             
-            # ★★★ 핵심 수정: 실시간 현재 가격 기준으로 제안가 재계산 ★★★
-            # 테이블에서 최저가 정보 가져오기
-            # 테이블 컬럼: 0:제외, 1:상품명, 2:현재가격, 3:최저가, 4:제안가, 5:가격차이, 6:상태, 7:액션
-            lowest_price = 0
-            discount_amount = self.discount_amount.value()
-            
-            for row in range(self.price_table.rowCount()):
-                item = self.price_table.item(row, 1)  # 상품명은 1번 컬럼
-                if item is None:
-                    continue
-                table_product_name = item.text()
-                if table_product_name == product_name:
-                    lowest_price_item = self.price_table.item(row, 3)  # 최저가는 3번 컬럼
-                    if lowest_price_item:
-                        lowest_price_text = lowest_price_item.text()
-                        price_numbers = re.findall(r'[\d,]+', lowest_price_text)
-                        lowest_price = int(price_numbers[0].replace(',', '')) if price_numbers else 0
-                    break
+            # ★★★ 파라미터로 전달받지 않은 경우에만 기본값 사용 (메인 스레드 호출 시) ★★★
+            if lowest_price is None:
+                lowest_price = 0
+            if discount_amount is None:
+                discount_amount = 0
             
             # 실시간 현재 가격 기준으로 제안가 재계산
-            if lowest_price > 0:
+            if lowest_price > 0 and discount_amount > 0:
                 new_price = max(lowest_price - discount_amount, 0)
                 self.log_message(f"🔄 실시간 재계산: 최저가 ¥{lowest_price:,} - 할인 ¥{discount_amount:,} = 제안가 ¥{new_price:,}")
             
